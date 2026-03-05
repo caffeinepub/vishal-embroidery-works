@@ -1,0 +1,161 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --radius: 0.75rem;
+
+    /* Sky Blue Primary Palette */
+    --background: 1 0 0;
+    --foreground: 0.18 0.02 255;
+    --card: 1 0 0;
+    --card-foreground: 0.18 0.02 255;
+    --popover: 1 0 0;
+    --popover-foreground: 0.18 0.02 255;
+
+    /* Sky blue primary: oklch(0.65 0.17 220) ≈ #0ea5e9 sky-500 */
+    --primary: 0.65 0.17 220;
+    --primary-foreground: 1 0 0;
+
+    --secondary: 0.95 0.02 220;
+    --secondary-foreground: 0.3 0.05 220;
+
+    --muted: 0.96 0.01 220;
+    --muted-foreground: 0.52 0.04 220;
+
+    --accent: 0.92 0.04 220;
+    --accent-foreground: 0.3 0.05 220;
+
+    --destructive: 0.577 0.245 27.325;
+    --destructive-foreground: 1 0 0;
+
+    --border: 0.91 0.02 220;
+    --input: 0.91 0.02 220;
+    --ring: 0.65 0.17 220;
+
+    /* Chart colors */
+    --chart-1: 0.65 0.17 220;
+    --chart-2: 0.7 0.14 160;
+    --chart-3: 0.6 0.18 30;
+    --chart-4: 0.75 0.16 290;
+    --chart-5: 0.68 0.18 50;
+
+    /* Sidebar */
+    --sidebar: 0.97 0.01 220;
+    --sidebar-foreground: 0.18 0.02 255;
+    --sidebar-primary: 0.65 0.17 220;
+    --sidebar-primary-foreground: 1 0 0;
+    --sidebar-accent: 0.93 0.03 220;
+    --sidebar-accent-foreground: 0.3 0.05 220;
+    --sidebar-border: 0.91 0.02 220;
+    --sidebar-ring: 0.65 0.17 220;
+
+    /* Custom VEW tokens */
+    --vew-sky: 0.65 0.17 220;
+    --vew-sky-light: 0.92 0.05 220;
+    --vew-sky-dark: 0.45 0.18 220;
+    --vew-gold: 0.78 0.15 75;
+    --vew-navy: 0.22 0.04 255;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Outfit', system-ui, -apple-system, sans-serif;
+    -webkit-tap-highlight-color: transparent;
+    overscroll-behavior: none;
+  }
+
+  /* Smooth scrolling */
+  html {
+    scroll-behavior: smooth;
+  }
+
+  /* Mobile-optimized touch */
+  button, a {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: oklch(var(--vew-sky) / 0.3);
+    border-radius: 9999px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: oklch(var(--vew-sky) / 0.5);
+  }
+}
+
+@layer utilities {
+  .vew-sky {
+    color: oklch(var(--vew-sky));
+  }
+
+  .bg-vew-sky {
+    background-color: oklch(var(--vew-sky));
+  }
+
+  .bg-vew-sky-light {
+    background-color: oklch(var(--vew-sky-light));
+  }
+
+  .border-vew-sky {
+    border-color: oklch(var(--vew-sky));
+  }
+
+  .text-vew-navy {
+    color: oklch(var(--vew-navy));
+  }
+
+  .text-vew-gold {
+    color: oklch(var(--vew-gold));
+  }
+
+  /* Safe area insets for mobile */
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  .pt-safe {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+
+  /* Horizontal scroll hide scrollbar */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Line clamp */
+  .line-clamp-1 {
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 1;
+  }
+
+  .line-clamp-2 {
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+}
