@@ -22,32 +22,50 @@ export function EmbroideryScreen({ onDesignClick }: EmbroideryScreenProps) {
 
   const embroideryQuery = useDesignsByCategory("Embroidery");
   const allEmbroideryQuery = useDesignsByCategory("All Embroidery");
+  const allEmbroideryWorksQuery = useDesignsByCategory("All Embroidery Works");
   const readyBlouseQuery = useDesignsByCategory("Ready Blouse Embroidery");
 
-  // Merge Embroidery + All Embroidery
+  // Merge all embroidery categories (Embroidery + All Embroidery + All Embroidery Works)
   const embroideryDesigns = [
     ...(embroideryQuery.data ?? []),
     ...(allEmbroideryQuery.data ?? []),
+    ...(allEmbroideryWorksQuery.data ?? []),
   ];
 
   const sampleEmbroidery = [
     ...getSampleByCategory("Embroidery"),
     ...getSampleByCategory("All Embroidery"),
+    ...getSampleByCategory("All Embroidery Works"),
   ];
 
+  // Only show sample data when all three queries haven't returned any data yet
+  // (i.e. still loading for the first time). Once the backend responds with
+  // an empty array we respect that and show an empty state so newly uploaded
+  // designs can appear immediately after a refetch.
+  const allQueriesReturned =
+    embroideryQuery.data !== undefined &&
+    allEmbroideryQuery.data !== undefined &&
+    allEmbroideryWorksQuery.data !== undefined;
   const allEmbroidery =
-    embroideryDesigns.length > 0 ? embroideryDesigns : sampleEmbroidery;
+    !allQueriesReturned && embroideryDesigns.length === 0
+      ? sampleEmbroidery
+      : embroideryDesigns;
 
+  // Same logic for ready blouse: don't fall back to sample data once the
+  // backend has returned (even if it returned an empty array).
   const readyBlouseDesigns =
-    readyBlouseQuery.data && readyBlouseQuery.data.length > 0
+    readyBlouseQuery.data !== undefined
       ? readyBlouseQuery.data
       : getSampleByCategory("Ready Blouse Embroidery");
 
   const isLoadingAll =
-    (embroideryQuery.isLoading || allEmbroideryQuery.isLoading) &&
-    embroideryDesigns.length === 0;
+    (embroideryQuery.isLoading ||
+      allEmbroideryQuery.isLoading ||
+      allEmbroideryWorksQuery.isLoading) &&
+    embroideryDesigns.length === 0 &&
+    !allQueriesReturned;
   const isLoadingReady =
-    readyBlouseQuery.isLoading && readyBlouseDesigns.length === 0;
+    readyBlouseQuery.isLoading && readyBlouseQuery.data === undefined;
 
   // Filter by search
   const filteredEmbroidery = searchQuery.trim()
@@ -204,8 +222,8 @@ export function EmbroideryScreen({ onDesignClick }: EmbroideryScreenProps) {
             designs={compareMode ? allEmbroidery : filteredEmbroidery}
             isLoading={isLoadingAll}
             onDesignClick={compareMode ? undefined : onDesignClick}
-            emptyMessage="No embroidery designs found"
-            emptyKannada="ಯಾವುದೇ ಕಸೂತಿ ಡಿಸೈನ್ ಕಂಡುಬಂದಿಲ್ಲ"
+            emptyMessage="No designs yet. Add designs from Admin Panel."
+            emptyKannada="ಅಡ್ಮಿನ್ ಪ್ಯಾನಲ್‌ನಿಂದ ಡಿಸೈನ್ ಸೇರಿಸಿ"
             compareMode={compareMode}
             selectedForCompare={selectedForCompare}
             onToggleCompare={handleToggleCompare}

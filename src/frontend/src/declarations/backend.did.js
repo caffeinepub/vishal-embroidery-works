@@ -26,9 +26,29 @@ export const UserRole = IDL.Variant({
 });
 export const BulkCreateEntry = IDL.Record({
   'imageUrl' : IDL.Text,
-  'designCode' : IDL.Text,
+  'category' : IDL.Text,
+});
+export const OrderStatus = IDL.Variant({
+  'pending' : IDL.Null,
+  'inStitching' : IDL.Null,
+  'delivered' : IDL.Null,
+  'ready' : IDL.Null,
 });
 export const Time = IDL.Int;
+export const Customer = IDL.Record({
+  'id' : IDL.Nat,
+  'backNeck' : IDL.Text,
+  'blouseLength' : IDL.Text,
+  'bust' : IDL.Text,
+  'name' : IDL.Text,
+  'createdAt' : Time,
+  'frontNeck' : IDL.Text,
+  'sleeveLength' : IDL.Text,
+  'address' : IDL.Text,
+  'shoulder' : IDL.Text,
+  'phone' : IDL.Text,
+  'waist' : IDL.Text,
+});
 export const Design = IDL.Record({
   'id' : IDL.Nat,
   'workType' : IDL.Text,
@@ -51,6 +71,15 @@ export const Measurement = IDL.Record({
   'shoulder' : IDL.Text,
   'phone' : IDL.Text,
   'waist' : IDL.Text,
+});
+export const Order = IDL.Record({
+  'id' : IDL.Nat,
+  'status' : OrderStatus,
+  'workType' : IDL.Text,
+  'createdAt' : Time,
+  'deliveryDate' : IDL.Text,
+  'customerId' : IDL.Nat,
+  'designCode' : IDL.Text,
 });
 export const UserProfile = IDL.Record({ 'name' : IDL.Text });
 
@@ -84,12 +113,33 @@ export const idlService = IDL.Service({
   '_initializeAccessControlWithSecret' : IDL.Func([IDL.Text], [], []),
   'assignCallerUserRole' : IDL.Func([IDL.Principal, UserRole], [], []),
   'clearAllDesigns' : IDL.Func([], [], []),
+  'createCustomer' : IDL.Func(
+      [
+        IDL.Text,
+        IDL.Text,
+        IDL.Text,
+        IDL.Text,
+        IDL.Text,
+        IDL.Text,
+        IDL.Text,
+        IDL.Text,
+        IDL.Text,
+        IDL.Text,
+      ],
+      [],
+      [],
+    ),
   'createDesign' : IDL.Func(
       [IDL.Text, IDL.Text, IDL.Text, IDL.Vec(IDL.Text), IDL.Bool, IDL.Bool],
       [],
       [],
     ),
-  'createDesignBulk' : IDL.Func([IDL.Vec(BulkCreateEntry)], [], []),
+  'createDesignBulk' : IDL.Func([IDL.Vec(BulkCreateEntry)], [IDL.Nat], []),
+  'createDesignWithAutoCode' : IDL.Func(
+      [IDL.Text, IDL.Text, IDL.Vec(IDL.Text), IDL.Bool, IDL.Bool],
+      [IDL.Text],
+      [],
+    ),
   'createMeasurement' : IDL.Func(
       [
         IDL.Text,
@@ -104,16 +154,28 @@ export const idlService = IDL.Service({
       [],
       [],
     ),
+  'createOrder' : IDL.Func(
+      [IDL.Nat, IDL.Text, IDL.Text, IDL.Text, OrderStatus],
+      [],
+      [],
+    ),
+  'deleteCustomer' : IDL.Func([IDL.Nat], [], []),
   'deleteDesign' : IDL.Func([IDL.Nat], [], []),
   'deleteMeasurement' : IDL.Func([IDL.Nat], [], []),
+  'deleteOrder' : IDL.Func([IDL.Nat], [], []),
+  'getAllCustomers' : IDL.Func([], [IDL.Vec(Customer)], ['query']),
   'getAllDesigns' : IDL.Func([], [IDL.Vec(Design)], ['query']),
   'getAllMeasurements' : IDL.Func([], [IDL.Vec(Measurement)], ['query']),
+  'getAllOrders' : IDL.Func([], [IDL.Vec(Order)], ['query']),
   'getBridalDesigns' : IDL.Func([], [IDL.Vec(Design)], ['query']),
   'getCallerUserProfile' : IDL.Func([], [IDL.Opt(UserProfile)], ['query']),
   'getCallerUserRole' : IDL.Func([], [UserRole], ['query']),
+  'getCustomer' : IDL.Func([IDL.Nat], [IDL.Opt(Customer)], ['query']),
+  'getCustomerOrders' : IDL.Func([IDL.Nat], [IDL.Vec(Order)], ['query']),
   'getDesign' : IDL.Func([IDL.Nat], [IDL.Opt(Design)], ['query']),
   'getDesignsByCategory' : IDL.Func([IDL.Text], [IDL.Vec(Design)], ['query']),
   'getMeasurement' : IDL.Func([IDL.Nat], [IDL.Opt(Measurement)], ['query']),
+  'getNextDesignCode' : IDL.Func([IDL.Text], [IDL.Text], ['query']),
   'getTrendingDesigns' : IDL.Func([], [IDL.Vec(Design)], ['query']),
   'getUserProfile' : IDL.Func(
       [IDL.Principal],
@@ -124,6 +186,23 @@ export const idlService = IDL.Service({
   'saveCallerUserProfile' : IDL.Func([UserProfile], [], []),
   'setBridal' : IDL.Func([IDL.Nat, IDL.Bool], [], []),
   'setTrending' : IDL.Func([IDL.Nat, IDL.Bool], [], []),
+  'updateCustomer' : IDL.Func(
+      [
+        IDL.Nat,
+        IDL.Text,
+        IDL.Text,
+        IDL.Text,
+        IDL.Text,
+        IDL.Text,
+        IDL.Text,
+        IDL.Text,
+        IDL.Text,
+        IDL.Text,
+        IDL.Text,
+      ],
+      [],
+      [],
+    ),
   'updateDesign' : IDL.Func(
       [IDL.Nat, IDL.Text, IDL.Text, IDL.Text, IDL.Vec(IDL.Text)],
       [],
@@ -144,6 +223,8 @@ export const idlService = IDL.Service({
       [],
       [],
     ),
+  'updateOrder' : IDL.Func([IDL.Nat, IDL.Text, IDL.Text, IDL.Text], [], []),
+  'updateOrderStatus' : IDL.Func([IDL.Nat, OrderStatus], [], []),
 });
 
 export const idlInitArgs = [];
@@ -167,9 +248,29 @@ export const idlFactory = ({ IDL }) => {
   });
   const BulkCreateEntry = IDL.Record({
     'imageUrl' : IDL.Text,
-    'designCode' : IDL.Text,
+    'category' : IDL.Text,
+  });
+  const OrderStatus = IDL.Variant({
+    'pending' : IDL.Null,
+    'inStitching' : IDL.Null,
+    'delivered' : IDL.Null,
+    'ready' : IDL.Null,
   });
   const Time = IDL.Int;
+  const Customer = IDL.Record({
+    'id' : IDL.Nat,
+    'backNeck' : IDL.Text,
+    'blouseLength' : IDL.Text,
+    'bust' : IDL.Text,
+    'name' : IDL.Text,
+    'createdAt' : Time,
+    'frontNeck' : IDL.Text,
+    'sleeveLength' : IDL.Text,
+    'address' : IDL.Text,
+    'shoulder' : IDL.Text,
+    'phone' : IDL.Text,
+    'waist' : IDL.Text,
+  });
   const Design = IDL.Record({
     'id' : IDL.Nat,
     'workType' : IDL.Text,
@@ -192,6 +293,15 @@ export const idlFactory = ({ IDL }) => {
     'shoulder' : IDL.Text,
     'phone' : IDL.Text,
     'waist' : IDL.Text,
+  });
+  const Order = IDL.Record({
+    'id' : IDL.Nat,
+    'status' : OrderStatus,
+    'workType' : IDL.Text,
+    'createdAt' : Time,
+    'deliveryDate' : IDL.Text,
+    'customerId' : IDL.Nat,
+    'designCode' : IDL.Text,
   });
   const UserProfile = IDL.Record({ 'name' : IDL.Text });
   
@@ -225,12 +335,33 @@ export const idlFactory = ({ IDL }) => {
     '_initializeAccessControlWithSecret' : IDL.Func([IDL.Text], [], []),
     'assignCallerUserRole' : IDL.Func([IDL.Principal, UserRole], [], []),
     'clearAllDesigns' : IDL.Func([], [], []),
+    'createCustomer' : IDL.Func(
+        [
+          IDL.Text,
+          IDL.Text,
+          IDL.Text,
+          IDL.Text,
+          IDL.Text,
+          IDL.Text,
+          IDL.Text,
+          IDL.Text,
+          IDL.Text,
+          IDL.Text,
+        ],
+        [],
+        [],
+      ),
     'createDesign' : IDL.Func(
         [IDL.Text, IDL.Text, IDL.Text, IDL.Vec(IDL.Text), IDL.Bool, IDL.Bool],
         [],
         [],
       ),
-    'createDesignBulk' : IDL.Func([IDL.Vec(BulkCreateEntry)], [], []),
+    'createDesignBulk' : IDL.Func([IDL.Vec(BulkCreateEntry)], [IDL.Nat], []),
+    'createDesignWithAutoCode' : IDL.Func(
+        [IDL.Text, IDL.Text, IDL.Vec(IDL.Text), IDL.Bool, IDL.Bool],
+        [IDL.Text],
+        [],
+      ),
     'createMeasurement' : IDL.Func(
         [
           IDL.Text,
@@ -245,16 +376,28 @@ export const idlFactory = ({ IDL }) => {
         [],
         [],
       ),
+    'createOrder' : IDL.Func(
+        [IDL.Nat, IDL.Text, IDL.Text, IDL.Text, OrderStatus],
+        [],
+        [],
+      ),
+    'deleteCustomer' : IDL.Func([IDL.Nat], [], []),
     'deleteDesign' : IDL.Func([IDL.Nat], [], []),
     'deleteMeasurement' : IDL.Func([IDL.Nat], [], []),
+    'deleteOrder' : IDL.Func([IDL.Nat], [], []),
+    'getAllCustomers' : IDL.Func([], [IDL.Vec(Customer)], ['query']),
     'getAllDesigns' : IDL.Func([], [IDL.Vec(Design)], ['query']),
     'getAllMeasurements' : IDL.Func([], [IDL.Vec(Measurement)], ['query']),
+    'getAllOrders' : IDL.Func([], [IDL.Vec(Order)], ['query']),
     'getBridalDesigns' : IDL.Func([], [IDL.Vec(Design)], ['query']),
     'getCallerUserProfile' : IDL.Func([], [IDL.Opt(UserProfile)], ['query']),
     'getCallerUserRole' : IDL.Func([], [UserRole], ['query']),
+    'getCustomer' : IDL.Func([IDL.Nat], [IDL.Opt(Customer)], ['query']),
+    'getCustomerOrders' : IDL.Func([IDL.Nat], [IDL.Vec(Order)], ['query']),
     'getDesign' : IDL.Func([IDL.Nat], [IDL.Opt(Design)], ['query']),
     'getDesignsByCategory' : IDL.Func([IDL.Text], [IDL.Vec(Design)], ['query']),
     'getMeasurement' : IDL.Func([IDL.Nat], [IDL.Opt(Measurement)], ['query']),
+    'getNextDesignCode' : IDL.Func([IDL.Text], [IDL.Text], ['query']),
     'getTrendingDesigns' : IDL.Func([], [IDL.Vec(Design)], ['query']),
     'getUserProfile' : IDL.Func(
         [IDL.Principal],
@@ -265,6 +408,23 @@ export const idlFactory = ({ IDL }) => {
     'saveCallerUserProfile' : IDL.Func([UserProfile], [], []),
     'setBridal' : IDL.Func([IDL.Nat, IDL.Bool], [], []),
     'setTrending' : IDL.Func([IDL.Nat, IDL.Bool], [], []),
+    'updateCustomer' : IDL.Func(
+        [
+          IDL.Nat,
+          IDL.Text,
+          IDL.Text,
+          IDL.Text,
+          IDL.Text,
+          IDL.Text,
+          IDL.Text,
+          IDL.Text,
+          IDL.Text,
+          IDL.Text,
+          IDL.Text,
+        ],
+        [],
+        [],
+      ),
     'updateDesign' : IDL.Func(
         [IDL.Nat, IDL.Text, IDL.Text, IDL.Text, IDL.Vec(IDL.Text)],
         [],
@@ -285,6 +445,8 @@ export const idlFactory = ({ IDL }) => {
         [],
         [],
       ),
+    'updateOrder' : IDL.Func([IDL.Nat, IDL.Text, IDL.Text, IDL.Text], [], []),
+    'updateOrderStatus' : IDL.Func([IDL.Nat, OrderStatus], [], []),
   });
 };
 

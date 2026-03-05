@@ -1,4 +1,3 @@
-import { Skeleton } from "@/components/ui/skeleton";
 import { ChevronRight } from "lucide-react";
 import { useRef } from "react";
 import type { Design } from "../../backend.d";
@@ -11,7 +10,6 @@ import { getRecentlyViewed } from "../../lib/recentlyViewed";
 import {
   SAMPLE_DESIGNS,
   getSampleBridal,
-  getSampleNew,
   getSampleTrending,
 } from "../../lib/sampleData";
 import { DesignCard } from "../shared/DesignCard";
@@ -94,7 +92,8 @@ export function HomeScreen({ onDesignClick }: HomeScreenProps) {
   const bridalQuery = useBridalDesigns();
   const allDesignsQuery = useAllDesigns();
 
-  // Use backend data or fall back to sample data
+  // Use backend data or fall back to sample data for trending/bridal
+  // (sample data gives a good first impression for an empty catalog)
   const trendingDesigns =
     trendingQuery.data && trendingQuery.data.length > 0
       ? trendingQuery.data
@@ -105,15 +104,18 @@ export function HomeScreen({ onDesignClick }: HomeScreenProps) {
       ? bridalQuery.data
       : getSampleBridal();
 
+  // For "New Designs": only show real designs -- never show sample data as "new"
+  // HorizontalSection returns null when !isLoading && designs.length === 0
+  const newDesigns = (allDesignsQuery.data ?? [])
+    .slice()
+    .sort((a, b) => Number(b.createdAt - a.createdAt))
+    .slice(0, 15);
+
+  // allDesigns is still used for recently-viewed lookup (sample fallback is fine here)
   const allDesigns =
     allDesignsQuery.data && allDesignsQuery.data.length > 0
       ? allDesignsQuery.data
       : SAMPLE_DESIGNS;
-
-  const newDesigns = allDesigns
-    .slice()
-    .sort((a, b) => Number(b.createdAt - a.createdAt))
-    .slice(0, 15);
 
   // Recently viewed
   const recentIds = getRecentlyViewed();

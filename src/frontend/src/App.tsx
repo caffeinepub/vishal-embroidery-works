@@ -104,12 +104,18 @@ export default function App() {
         {showHeader && (
           <header className="flex items-center gap-3 px-4 pt-4 pb-3 border-b border-border/60 bg-white/95 backdrop-blur-sm flex-shrink-0 sticky top-0 z-30">
             {/* VEW Logo */}
-            <div className="w-8 h-8 rounded-lg overflow-hidden bg-vew-sky-light flex items-center justify-center flex-shrink-0">
+            <div className="w-8 h-8 rounded-lg overflow-hidden bg-vew-sky-light flex items-center justify-center flex-shrink-0 relative">
               <img
                 src="/assets/generated/vew-logo.dim_200x200.png"
                 alt="VEW"
                 className="w-full h-full object-contain p-0.5"
+                onError={(e) => {
+                  e.currentTarget.style.display = "none";
+                }}
               />
+              <span className="absolute inset-0 flex items-center justify-center text-vew-sky text-[9px] font-extrabold -z-10">
+                VEW
+              </span>
             </div>
             <div>
               <h1 className="text-sm font-bold text-vew-navy leading-tight">
@@ -126,12 +132,18 @@ export default function App() {
         {activeTab === "home" && !showSplash && (
           <header className="flex items-center justify-between px-4 pt-4 pb-3 bg-white flex-shrink-0">
             <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-xl overflow-hidden bg-vew-sky-light flex items-center justify-center">
+              <div className="w-9 h-9 rounded-xl overflow-hidden bg-vew-sky-light flex items-center justify-center relative">
                 <img
                   src="/assets/generated/vew-logo.dim_200x200.png"
                   alt="VEW"
                   className="w-full h-full object-contain p-0.5"
+                  onError={(e) => {
+                    e.currentTarget.style.display = "none";
+                  }}
                 />
+                <span className="absolute inset-0 flex items-center justify-center text-vew-sky text-[9px] font-extrabold -z-10">
+                  VEW
+                </span>
               </div>
               <div>
                 <p className="text-[10px] text-muted-foreground leading-tight">

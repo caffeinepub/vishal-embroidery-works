@@ -41,12 +41,23 @@ export function DesignGrid({
   }, [designs.length]);
 
   // Scroll detection for back-to-top
+  // In mobile layouts the scrollable container is a nested overflow-y-auto div,
+  // not the window. We look up the closest scrollable ancestor at mount time.
   useEffect(() => {
+    const scrollContainer = containerRef.current?.closest(
+      ".overflow-y-auto",
+    ) as HTMLElement | null;
+    const target = scrollContainer ?? document.documentElement;
+
     const handleScroll = () => {
-      setShowBackToTop(window.scrollY > 300);
+      const scrollTop = scrollContainer
+        ? scrollContainer.scrollTop
+        : window.scrollY;
+      setShowBackToTop(scrollTop > 300);
     };
-    window.addEventListener("scroll", handleScroll, { passive: true });
-    return () => window.removeEventListener("scroll", handleScroll);
+
+    target.addEventListener("scroll", handleScroll, { passive: true });
+    return () => target.removeEventListener("scroll", handleScroll);
   }, []);
 
   // Intersection observer for infinite scroll
@@ -71,7 +82,14 @@ export function DesignGrid({
   }, [handleObserver]);
 
   const scrollToTop = () => {
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    const scrollContainer = containerRef.current?.closest(
+      ".overflow-y-auto",
+    ) as HTMLElement | null;
+    if (scrollContainer) {
+      scrollContainer.scrollTo({ top: 0, behavior: "smooth" });
+    } else {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
   };
 
   if (isLoading) {
@@ -122,8 +140,15 @@ export function DesignGrid({
   }
 
   return (
-    <div ref={containerRef} className="relative">
-      <div className="grid grid-cols-3 gap-2 p-3">
+    <div
+      ref={containerRef}
+      className="relative"
+      style={{ willChange: "scroll-position" }}
+    >
+      <div
+        className="grid grid-cols-3 gap-2 p-3"
+        style={{ contain: "layout style" }}
+      >
         {visibleDesigns.map((design, idx) => (
           <DesignCard
             key={design.id.toString()}

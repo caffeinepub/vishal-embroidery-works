@@ -44,15 +44,16 @@ import {
 } from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
-import type { Design, Measurement } from "../../backend.d";
+import type { Customer, Design } from "../../backend.d";
 import { useAdminAuth } from "../../hooks/useAdminAuth";
 import {
+  useAllCustomers,
   useAllDesigns,
-  useAllMeasurements,
   useCreateDesign,
   useCreateDesignBulk,
+  useDeleteCustomer,
   useDeleteDesign,
-  useDeleteMeasurement,
+  useGetNextDesignCode,
   useSetBridal,
   useSetTrending,
   useUpdateDesign,
@@ -73,7 +74,6 @@ const CATEGORIES = [
 type AdminTab = "designs" | "add" | "bulk" | "customers";
 
 interface DesignFormData {
-  designCode: string;
   category: string;
   workType: string;
   imageUrls: string[];
@@ -82,7 +82,6 @@ interface DesignFormData {
 }
 
 const emptyDesignForm: DesignFormData = {
-  designCode: "",
   category: "",
   workType: "",
   imageUrls: [],
@@ -240,7 +239,6 @@ function DesignFormPanel({
   const [form, setForm] = useState<DesignFormData>(
     editingDesign
       ? {
-          designCode: editingDesign.designCode,
           category: editingDesign.category,
           workType: editingDesign.workType,
           imageUrls: editingDesign.imageUrls ?? [],
@@ -248,6 +246,10 @@ function DesignFormPanel({
           isTrending: editingDesign.isTrending,
         }
       : emptyDesignForm,
+  );
+
+  const nextCodeQuery = useGetNextDesignCode(
+    editingDesign ? "" : form.category,
   );
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -260,9 +262,34 @@ function DesignFormPanel({
 
   const { uploadImage } = useUploadImage();
 
+  const ALLOWED_TYPES = ["image/png", "image/jpeg", "image/jpg"];
+  const MAX_FILE_SIZE_MB = 10;
+
   const handleImagesChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
     if (!files.length) return;
+
+    // Validate file types
+    const invalidType = files.find((f) => !ALLOWED_TYPES.includes(f.type));
+    if (invalidType) {
+      toast.error(
+        `"${invalidType.name}" is not supported. Please upload PNG, JPG or JPEG images only.`,
+      );
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
+
+    // Validate file sizes
+    const oversized = files.find(
+      (f) => f.size > MAX_FILE_SIZE_MB * 1024 * 1024,
+    );
+    if (oversized) {
+      toast.error(
+        `"${oversized.name}" exceeds the ${MAX_FILE_SIZE_MB} MB limit. Please use a smaller image.`,
+      );
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
 
     const remaining = 10 - form.imageUrls.length;
     const toUpload = files.slice(0, remaining);
@@ -276,21 +303,38 @@ function DesignFormPanel({
     for (let i = 0; i < toUpload.length; i++) {
       const file = toUpload[i];
       const localPreview = URL.createObjectURL(file);
+      const uploadSlotIndex = form.imageUrls.length + i;
 
       // Optimistically show the preview
       setLocalPreviews((prev) => [...prev, localPreview]);
-      setUploadingIndex(form.imageUrls.length + i);
+      setUploadingIndex(uploadSlotIndex);
       setUploadProgress(0);
 
       try {
         const url = await uploadImage(file, (pct) => setUploadProgress(pct));
+        // Replace the local preview URL with the confirmed remote URL
         setForm((prev) => ({ ...prev, imageUrls: [...prev.imageUrls, url] }));
+        setLocalPreviews((prev) => {
+          const updated = [...prev];
+          // Replace the matching local blob URL with the remote URL so display stays intact
+          const idx = updated.indexOf(localPreview);
+          if (idx !== -1) updated[idx] = url;
+          return updated;
+        });
         setUploadProgress(100);
       } catch (err) {
         console.error("Image upload failed:", err);
-        setUploadError("One or more uploads failed. Please try again.");
+        const errMsg = err instanceof Error ? err.message : String(err);
+        const friendlyMsg =
+          errMsg.includes("401") ||
+          errMsg.includes("403") ||
+          errMsg.includes("Unauthorized")
+            ? "Upload failed: authentication error. Please log out and log in again."
+            : errMsg.includes("413") || errMsg.includes("too large")
+              ? "Upload failed: image is too large. Try a smaller file."
+              : "Upload failed after retries. Please check your connection and try again.";
+        setUploadError(friendlyMsg);
         setLocalPreviews((prev) => prev.filter((p) => p !== localPreview));
-      } finally {
         URL.revokeObjectURL(localPreview);
       }
     }
@@ -301,16 +345,22 @@ function DesignFormPanel({
   };
 
   const removeImage = (index: number) => {
+    setLocalPreviews((prev) => {
+      const removed = prev[index];
+      // Revoke if it's a local blob URL (not a remote http URL)
+      if (removed?.startsWith("blob:")) URL.revokeObjectURL(removed);
+      return prev.filter((_, i) => i !== index);
+    });
     setForm((prev) => ({
       ...prev,
       imageUrls: prev.imageUrls.filter((_, i) => i !== index),
     }));
-    setLocalPreviews((prev) => prev.filter((_, i) => i !== index));
   };
 
-  // Combine confirmed URLs with local previews for display
+  // Show localPreviews as the source of truth for display -- they get replaced
+  // with remote URLs in-place once each upload completes.
   const displayImages =
-    form.imageUrls.length > 0 ? form.imageUrls : localPreviews;
+    localPreviews.length > 0 ? localPreviews : form.imageUrls;
 
   return (
     <div className="flex flex-col h-full">
@@ -425,37 +475,31 @@ function DesignFormPanel({
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/*"
+            accept="image/png,image/jpeg,image/jpg"
             multiple
             className="hidden"
             onChange={handleImagesChange}
           />
 
           {uploadError && (
-            <p
+            <div
               data-ocid="admin.add_design.upload.error_state"
-              className="text-[10px] text-destructive mt-1 text-center"
+              className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl p-2.5 mt-1"
             >
-              {uploadError}
+              <X className="w-4 h-4 text-red-500 flex-shrink-0" />
+              <p className="text-[10px] text-red-700 leading-snug">
+                {uploadError}
+              </p>
+            </div>
+          )}
+          {displayImages.length === 0 && !editingDesign && (
+            <p className="text-[10px] text-amber-600 mt-1 text-center">
+              At least one image is required / ಕನಿಷ್ಠ ಒಂದು ಚಿತ್ರ ಅಗತ್ಯ
             </p>
           )}
           <p className="text-[10px] text-muted-foreground mt-1 text-center">
             {displayImages.length}/10 images added
           </p>
-        </div>
-
-        {/* Design Code */}
-        <div>
-          <Label className="text-xs mb-1.5 block">Design Code / ಡಿಸೈನ್ ಕೋಡ್ *</Label>
-          <Input
-            data-ocid="admin.add_design.code.input"
-            value={form.designCode}
-            onChange={(e) =>
-              setForm((prev) => ({ ...prev, designCode: e.target.value }))
-            }
-            placeholder="e.g. VEW-EMB-001"
-            className="h-10 text-sm rounded-xl"
-          />
         </div>
 
         {/* Category */}
@@ -480,6 +524,44 @@ function DesignFormPanel({
             </SelectContent>
           </Select>
         </div>
+
+        {/* Design Code — read-only for edit, auto-preview for new */}
+        {editingDesign ? (
+          <div>
+            <Label className="text-xs mb-1.5 block">Design Code / ಡಿಸೈನ್ ಕೋಡ್</Label>
+            <div className="h-10 rounded-xl border border-border/60 bg-muted/30 flex items-center px-3 text-sm text-muted-foreground font-mono">
+              {editingDesign.designCode}
+            </div>
+          </div>
+        ) : (
+          <div
+            data-ocid="admin.add_design.code_preview.panel"
+            className="bg-vew-sky-light/40 rounded-xl px-4 py-3"
+          >
+            {!form.category ? (
+              <p className="text-[11px] text-muted-foreground">
+                Select a category to see the auto-generated code
+              </p>
+            ) : nextCodeQuery.isLoading ? (
+              <div className="flex items-center gap-2">
+                <Loader2 className="w-3.5 h-3.5 text-vew-sky animate-spin" />
+                <p className="text-[11px] text-vew-sky">Generating code...</p>
+              </div>
+            ) : (
+              <>
+                <p className="text-[11px] text-vew-sky font-semibold">
+                  Auto-generated code:{" "}
+                  <span className="font-mono font-bold">
+                    {nextCodeQuery.data ?? "—"}
+                  </span>
+                </p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">
+                  ಸ್ವಯಂ ಕೋಡ್ ನಿಯೋಜಿಸಲಾಗುವುದು
+                </p>
+              </>
+            )}
+          </div>
+        )}
 
         {/* Work Type */}
         <div>
@@ -544,7 +626,7 @@ function DesignFormPanel({
         <Button
           data-ocid="admin.add_design.submit_button"
           onClick={() => onSave(form)}
-          disabled={isPending}
+          disabled={isPending || uploadingIndex !== null}
           className="flex-1 rounded-xl bg-vew-sky text-white hover:bg-vew-sky-dark"
         >
           {isPending ? (
@@ -579,12 +661,40 @@ function BulkUploadPanel() {
   const [uploadedCount, setUploadedCount] = useState(0);
   const [isDone, setIsDone] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
+  const [bulkCategory, setBulkCategory] = useState("All Embroidery Works");
 
   const { uploadImage } = useUploadImage();
   const createDesignBulk = useCreateDesignBulk();
 
+  const BULK_ALLOWED_TYPES = ["image/png", "image/jpeg", "image/jpg"];
+  const BULK_MAX_SIZE_MB = 10;
+
   const handleFilesChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files ?? []).slice(0, 500);
+    const allFiles = Array.from(e.target.files ?? []);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+
+    // Filter to valid types only and warn about invalid ones
+    const invalidType = allFiles.find(
+      (f) => !BULK_ALLOWED_TYPES.includes(f.type),
+    );
+    if (invalidType) {
+      toast.error(
+        `"${invalidType.name}" is not a supported format. Only PNG, JPG and JPEG are allowed.`,
+      );
+      return;
+    }
+
+    const oversized = allFiles.find(
+      (f) => f.size > BULK_MAX_SIZE_MB * 1024 * 1024,
+    );
+    if (oversized) {
+      toast.error(
+        `"${oversized.name}" exceeds ${BULK_MAX_SIZE_MB} MB. Please resize or remove that image.`,
+      );
+      return;
+    }
+
+    const files = allFiles.slice(0, 500);
     const newFiles: BulkFile[] = files.map((file) => ({
       file,
       preview: URL.createObjectURL(file),
@@ -595,7 +705,6 @@ function BulkUploadPanel() {
     setIsDone(false);
     setErrorMsg("");
     setUploadedCount(0);
-    if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   const handleUploadAll = async () => {
@@ -624,7 +733,8 @@ function BulkUploadPanel() {
               uploadedUrl: url,
               status: "done",
             };
-          } catch {
+          } catch (err) {
+            console.error(`Bulk upload failed for "${item.file.name}":`, err);
             results[globalIdx] = {
               ...results[globalIdx],
               status: "error",
@@ -641,30 +751,51 @@ function BulkUploadPanel() {
     const successfulEntries = results
       .filter((f) => f.status === "done" && f.uploadedUrl)
       .map((f) => ({
-        designCode: f.file.name.replace(/\.[^.]+$/, ""), // strip extension
         imageUrl: f.uploadedUrl as string,
+        category: bulkCategory,
       }));
 
     const errorCount = results.filter((f) => f.status === "error").length;
 
     if (successfulEntries.length > 0) {
       try {
-        await createDesignBulk.mutateAsync(successfulEntries);
-        toast.success(
-          `Added ${successfulEntries.length} design${successfulEntries.length !== 1 ? "s" : ""} successfully!`,
-        );
+        const { savedCount, skippedCount } =
+          await createDesignBulk.mutateAsync(successfulEntries);
+        const parts: string[] = [];
+        if (savedCount > 0)
+          parts.push(
+            `${savedCount} design${savedCount !== 1 ? "s" : ""} saved`,
+          );
+        if (skippedCount > 0) parts.push(`${skippedCount} failed to save`);
+        if (errorCount > 0)
+          parts.push(
+            `${errorCount} file${errorCount !== 1 ? "s" : ""} failed to upload`,
+          );
+        toast.success(`${parts.join(", ")}.`);
         setIsDone(true);
         if (errorCount > 0) {
           setErrorMsg(
-            `${errorCount} file${errorCount !== 1 ? "s" : ""} failed to upload.`,
+            `${errorCount} file${errorCount !== 1 ? "s" : ""} failed to upload and were skipped.`,
           );
         }
-      } catch {
-        setErrorMsg("Failed to save designs to database. Please try again.");
+      } catch (err) {
+        console.error("createDesignBulk error:", err);
+        const errMsg = err instanceof Error ? err.message : String(err);
+        const friendly =
+          errMsg.includes("Unauthorized") || errMsg.includes("unauthorized")
+            ? "Save failed: authentication error. Please refresh the page and log in again."
+            : errMsg.includes("size") ||
+                errMsg.includes("too large") ||
+                errMsg.includes("413")
+              ? "Save failed: request too large. Try uploading fewer images at once (max 50 per batch)."
+              : errMsg.includes("network") || errMsg.includes("fetch")
+                ? "Save failed: network error. Please check your connection and try again."
+                : "Failed to save designs to database. Please try again in a few seconds.";
+        setErrorMsg(friendly);
       }
     } else {
       setErrorMsg(
-        "All uploads failed. Please check your connection and try again.",
+        "All uploads failed. Please ensure you are logged in, then try again. If the issue persists, refresh the page.",
       );
     }
 
@@ -693,9 +824,31 @@ function BulkUploadPanel() {
           <p className="text-xs font-bold text-vew-navy">Bulk Upload</p>
         </div>
         <p className="text-[10px] text-muted-foreground leading-snug">
-          Upload up to 500 images at once. Each image will create a new design
-          entry using the filename as the design code.
+          Upload up to 500 images at once. Design codes are auto-generated for
+          each image based on the selected category.
         </p>
+      </div>
+
+      {/* Category selector */}
+      <div>
+        <Label className="text-xs mb-1.5 block">
+          Category for all images / ಎಲ್ಲ ಚಿತ್ರಗಳಿಗೆ ವರ್ಗ
+        </Label>
+        <Select value={bulkCategory} onValueChange={setBulkCategory}>
+          <SelectTrigger
+            data-ocid="admin.bulk.category.select"
+            className="h-10 rounded-xl text-sm"
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {CATEGORIES.map((cat) => (
+              <SelectItem key={cat} value={cat}>
+                {cat}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       {/* Drop zone */}
@@ -837,13 +990,24 @@ function BulkUploadPanel() {
               )}
             </Button>
           )}
+
+          {/* Upload More button after completion */}
+          {isDone && (
+            <Button
+              variant="outline"
+              onClick={handleClear}
+              className="w-full rounded-xl border-vew-sky text-vew-sky mt-2"
+            >
+              Upload More Images / ಇನ್ನಷ್ಟು ಅಪ್ಲೋಡ್ ಮಾಡಿ
+            </Button>
+          )}
         </div>
       )}
 
       <input
         ref={fileInputRef}
         type="file"
-        accept="image/*"
+        accept="image/png,image/jpeg,image/jpg"
         multiple
         className="hidden"
         onChange={handleFilesChange}
@@ -854,11 +1018,11 @@ function BulkUploadPanel() {
         <p className="text-[10px] text-amber-700 leading-relaxed">
           <strong>Auto settings per image:</strong>
           <br />
-          Category: All Embroidery Works · Work Type: Embroidery
+          Category: {bulkCategory} · Work Type: auto-assigned
           <br />
           Trending: Off · Bridal: Off
           <br />
-          Design Code = filename (without extension)
+          Design Code: auto-generated (e.g. VEW-AE-001, VEW-AE-002...)
         </p>
       </div>
     </div>
@@ -869,6 +1033,9 @@ function BulkUploadPanel() {
 
 export function AdminScreen({ onBack }: { onBack: () => void }) {
   const { isLoggedIn, logout } = useAdminAuth();
+  // Local flag so the component re-renders immediately on successful login
+  // without waiting for a full sessionStorage round-trip.
+  const [loggedInLocal, setLoggedInLocal] = useState(isLoggedIn);
 
   const [activeTab, setActiveTab] = useState<AdminTab>("designs");
   const [showForm, setShowForm] = useState(false);
@@ -879,13 +1046,13 @@ export function AdminScreen({ onBack }: { onBack: () => void }) {
   const [searchQuery, setSearchQuery] = useState("");
 
   const allDesignsQuery = useAllDesigns();
-  const measurementsQuery = useAllMeasurements();
+  const customersQuery = useAllCustomers();
   const createDesign = useCreateDesign();
   const updateDesign = useUpdateDesign();
   const deleteDesign = useDeleteDesign();
   const setTrending = useSetTrending();
   const setBridal = useSetBridal();
-  const deleteMeasurement = useDeleteMeasurement();
+  const deleteCustomerMutation = useDeleteCustomer();
 
   const designs = allDesignsQuery.data ?? [];
 
@@ -895,7 +1062,7 @@ export function AdminScreen({ onBack }: { onBack: () => void }) {
       d.category.toLowerCase().includes(searchQuery.toLowerCase()),
   );
 
-  if (!isLoggedIn) {
+  if (!loggedInLocal) {
     return (
       <div className="flex-1 flex flex-col">
         <div className="flex items-center gap-2 px-4 pt-4 pb-3 border-b border-border/60">
@@ -904,21 +1071,31 @@ export function AdminScreen({ onBack }: { onBack: () => void }) {
           </button>
           <h2 className="text-sm font-bold text-vew-navy">Admin Panel</h2>
         </div>
-        <AdminLogin onBack={onBack} onLoginSuccess={() => {}} />
+        <AdminLogin
+          onBack={onBack}
+          onLoginSuccess={() => setLoggedInLocal(true)}
+        />
       </div>
     );
   }
 
   const handleSaveDesign = async (form: DesignFormData) => {
-    if (!form.designCode.trim() || !form.category) {
-      toast.error("Design code and category are required");
+    if (!form.category) {
+      toast.error("Category is required");
+      return;
+    }
+    // For new designs (not editing), require at least one image
+    if (!editingDesign && form.imageUrls.length === 0) {
+      toast.error(
+        "Please upload at least one design image / ಕನಿಷ್ಠ ಒಂದು ಚಿತ್ರ ಅಪ್ಲೋಡ್ ಮಾಡಿ",
+      );
       return;
     }
     try {
       if (editingDesign) {
         await updateDesign.mutateAsync({
           id: editingDesign.id,
-          designCode: form.designCode,
+          designCode: editingDesign.designCode,
           category: form.category,
           workType: form.workType,
           imageUrls: form.imageUrls,
@@ -932,15 +1109,16 @@ export function AdminScreen({ onBack }: { onBack: () => void }) {
         ]);
         toast.success("Design updated / ಡಿಸೈನ್ ನವೀಕರಿಸಲಾಗಿದೆ");
       } else {
-        await createDesign.mutateAsync({
-          designCode: form.designCode,
+        const assignedCode = await createDesign.mutateAsync({
           category: form.category,
           workType: form.workType,
           imageUrls: form.imageUrls,
           isBridal: form.isBridal,
           isTrending: form.isTrending,
         });
-        toast.success("Design added / ಡಿಸೈನ್ ಸೇರಿಸಲಾಗಿದೆ");
+        toast.success(`Design added: ${assignedCode} / ಡಿಸೈನ್ ಸೇರಿಸಲಾಗಿದೆ`);
+        // Switch to the designs list so admin can immediately see the new entry
+        setActiveTab("designs");
       }
       setShowForm(false);
       setEditingDesign(null);
@@ -1019,7 +1197,10 @@ export function AdminScreen({ onBack }: { onBack: () => void }) {
         <h2 className="text-sm font-bold text-vew-navy">Admin Panel</h2>
         <button
           type="button"
-          onClick={logout}
+          onClick={() => {
+            logout();
+            setLoggedInLocal(false);
+          }}
           className="ml-auto flex items-center gap-1 text-xs text-muted-foreground hover:text-destructive transition-colors"
         >
           <LogOut className="w-3.5 h-3.5" />
@@ -1223,13 +1404,12 @@ export function AdminScreen({ onBack }: { onBack: () => void }) {
           <div>
             <div className="px-4 pt-3 pb-2">
               <p className="text-xs text-muted-foreground">
-                {(measurementsQuery.data ?? []).length} customer
-                {(measurementsQuery.data ?? []).length !== 1 ? "s" : ""}{" "}
-                registered
+                {(customersQuery.data ?? []).length} customer
+                {(customersQuery.data ?? []).length !== 1 ? "s" : ""} registered
               </p>
             </div>
 
-            {measurementsQuery.isLoading ? (
+            {customersQuery.isLoading ? (
               <div className="px-4 space-y-2">
                 {Array.from({ length: 4 }).map((_, i) => (
                   // biome-ignore lint/suspicious/noArrayIndexKey: skeleton
@@ -1238,23 +1418,39 @@ export function AdminScreen({ onBack }: { onBack: () => void }) {
               </div>
             ) : (
               <div className="px-4 pb-6 space-y-2">
-                {(measurementsQuery.data ?? []).map((m: Measurement, idx) => (
+                {(customersQuery.data ?? []).map((c: Customer, idx) => (
                   <div
-                    key={m.id.toString()}
+                    key={c.id.toString()}
                     data-ocid={`admin.customers.item.${idx + 1}`}
                     className="flex items-center gap-3 bg-white rounded-xl border border-border/60 shadow-xs px-3.5 py-3"
                   >
                     <div className="w-9 h-9 rounded-full bg-vew-sky-light flex items-center justify-center flex-shrink-0">
                       <span className="text-vew-sky font-bold text-sm">
-                        {m.name.charAt(0).toUpperCase()}
+                        {c.name.charAt(0).toUpperCase()}
                       </span>
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-semibold text-vew-navy truncate">
-                        {m.name}
+                        {c.name}
                       </p>
                       <p className="text-[10px] text-muted-foreground">
-                        {m.phone}
+                        {c.phone}
+                      </p>
+                      {c.address && (
+                        <p className="text-[10px] text-muted-foreground/70 truncate">
+                          {c.address}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex-shrink-0 text-right mr-1">
+                      <p className="text-[9px] text-muted-foreground">Added</p>
+                      <p className="text-[9px] text-vew-navy font-medium">
+                        {new Date(
+                          Number(c.createdAt) / 1_000_000,
+                        ).toLocaleDateString("en-IN", {
+                          day: "2-digit",
+                          month: "short",
+                        })}
                       </p>
                     </div>
                     <button
@@ -1262,7 +1458,7 @@ export function AdminScreen({ onBack }: { onBack: () => void }) {
                       data-ocid={`admin.customers.delete_button.${idx + 1}`}
                       onClick={async () => {
                         try {
-                          await deleteMeasurement.mutateAsync(m.id);
+                          await deleteCustomerMutation.mutateAsync(c.id);
                           toast.success("Customer deleted");
                         } catch {
                           toast.error("Failed to delete");
@@ -1275,12 +1471,15 @@ export function AdminScreen({ onBack }: { onBack: () => void }) {
                   </div>
                 ))}
 
-                {(measurementsQuery.data ?? []).length === 0 && (
+                {(customersQuery.data ?? []).length === 0 && (
                   <div
                     data-ocid="admin.customers.empty_state"
                     className="text-center py-8 text-muted-foreground text-sm"
                   >
                     No customers yet
+                    <p className="text-xs text-muted-foreground/60 mt-1">
+                      Customers added via the Customers tab will appear here
+                    </p>
                   </div>
                 )}
               </div>

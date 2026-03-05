@@ -2,63 +2,67 @@
 
 ## Current State
 
-Full-stack ICP app with Motoko backend + React frontend. Features:
-- Admin panel with password login (akhilesh18 / Theakhilesh18), add/edit/delete designs, toggle trending/bridal flags
-- Design type: { id, designCode, category, workType, imageUrl (single), isBridal, isTrending, isNew, createdAt }
-- Embroidery screen with 2 tabs (All Embroidery / Ready Blouse Embroidery), 3-column DesignGrid with infinite scroll + back-to-top
-- Blouse screen with 5 category tabs
-- Home screen with 4 horizontal sections (Trending, New, Bridal, Recently Viewed)
-- Favourite screen (reads from localStorage) — currently only looks up in SAMPLE_DESIGNS (broken for real backend designs)
-- Contact screen with address, phone, WhatsApp button, admin link
-- Customer measurements screen
-- DesignDetailModal with Book Stitching, WhatsApp, Share, Add to Favourite buttons
-- Image upload via blob storage (single image per design)
-- Design card shows single imageUrl
+The app is a full-stack Motoko + React mobile catalog for a tailoring/embroidery shop. It includes:
+- Splash screen (SplashScreen.tsx) with VEW logo and shop name
+- 6-tab bottom navigation: Home, Embroidery, Blouse, Favourite, Customers, Contact
+- Admin panel with username/password login, Add Design, Bulk Upload, manage designs/customers
+- Image upload via Caffeine blob storage (StorageClient.ts) with admin token auth
+- Auto-generated design codes (VEW-AE-xxx etc.) per category
+- Design gallery with lazy loading (page 50), back-to-top, search, compare
+- Customer management with orders, measurements, status tracking
+- Backend: Motoko with access control requiring admin role for mutations
+
+Known problems:
+1. Splash screen may show blank if logo image fails to load (no fallback/inline SVG)
+2. Splash screen timer starts immediately regardless of image load state -- may navigate before logo is visible
+3. `useUploadImage` initializes admin token via a separate actor call inside the upload loop -- fragile; if that call fails the entire upload fails with an auth error
+4. The `getAllDesigns` query in the backend calls `.sort()` without a comparator, which sorts by default object ordering (unreliable)
+5. After bulk upload, gallery cache invalidation may not force a refetch quickly enough
+6. `createCustomer` backend requires `#user` permission; the admin actor has `#admin` which does NOT include `#user` unless `hasPermission` checks for admin as a superset -- need to verify and fix
+7. Upload error messages may be misleading when the admin token is missing from the URL (token not in sessionStorage yet)
+8. The `useGetNextDesignCode` query requires admin auth -- if the admin token isn't initialized yet on first load, the preview badge fails silently
+9. No `loading` / `error` fallback on the VEW logo `<img>` in the splash screen
+10. `BulkUploadPanel` re-creates upload state after clear but doesn't reset `isDone` consistently
 
 ## Requested Changes (Diff)
 
 ### Add
-- **Multi-image support per design**: Design type gets `imageUrls: [Text]` (array of up to 10 URLs). `imageUrl` kept for backward compat as alias to first element.
-- **Bulk Upload feature** in admin: upload up to 500 images at once; auto-create design per image with filename as code, category="All Embroidery Works", workType="Embroidery", trending=false, bridal=false
-- **Admin Add Design form**: support up to 10 images for a single design entry
-- **Search bar** in Embroidery screen (All tab): filter by design code in real time
-- **Compare Designs feature**: select 2 designs from gallery, view side by side in a modal
-- **Image swiper in DesignCard thumbnail**: show first image, but multi-image indicator (dot count)
-- **Image swiper in DesignDetailModal**: swipe left/right through all images of a design
-- **Pinch-to-zoom + double-tap zoom + drag while zoomed** in DesignDetailModal image viewer
-- **FavouriteScreen**: fix to load from real backend designs (useAllDesigns) instead of SAMPLE_DESIGNS only
-- **createMeasurement** fix: remove the admin-only check so customers can book stitching without ICP auth
+- Inline SVG fallback for the VEW logo in SplashScreen when image fails to load
+- `onLoad` / `onError` handling on splash screen logo image so the timer only starts after the logo is confirmed visible (or after a max wait)
+- Inline fallback VEW text badge on all logo `<img>` elements with `onError` handler
+- Stale-time configuration on `useGetNextDesignCode` to avoid re-fetching constantly
 
 ### Modify
-- **Backend Design type**: add `imageUrls: [Text]` field; update `createDesign`, `updateDesign` to accept `imageUrls`; keep backward compat by computing `imageUrl` from first element
-- **Admin DesignFormPanel**: replace single image upload with multi-image (up to 10) upload strip
-- **Admin Designs tab**: add Bulk Upload button that opens a bulk upload panel
-- **EmbroideryScreen All tab**: add search bar at top
-- **DesignCard**: show first image from imageUrls; show multi-image dot indicator if > 1 image
-- **DesignDetailModal**: image section becomes a swiper (swipe left/right), with pinch-to-zoom/double-tap/drag support
-- **FavouriteScreen**: replace SAMPLE_DESIGNS lookup with real useAllDesigns hook data
-- **ContactScreen**: already correct (Nehru Chowk Road, +917353315706) — no change needed
+- **SplashScreen.tsx**: Wait for the logo to load (or error) before starting the 2.2s display timer; add `onError` fallback to show inline "VEW" text badge instead of broken image
+- **useUploadImage.ts**: Move the admin token initialization outside the retry loop -- initialize once before the loop starts, throw early if it fails, don't call it again on retry
+- **useQueries.ts `useCreateDesignBulk`**: After successful mutate, call `refetchQueries` with `type: 'active'` to force immediate gallery refresh
+- **EmbroideryScreen.tsx**: Remove the sample data fallback entirely once `allQueriesReturned` is true -- make the empty state show a helpful "No designs yet, add some from Admin Panel" message
+- **AdminScreen.tsx `DesignFormPanel`**: Validate that at least one image is uploaded before allowing save; show a clear validation message if no images
+- **AdminScreen.tsx `BulkUploadPanel`**: After `isDone`, show a "Upload more" button that fully resets state including `isDone = false`; fix the `handleClear` to also reset `isDone`
+- **HomeScreen.tsx**: Only fall back to sample data when the query is still loading (isLoading = true), not after it has returned empty
 
 ### Remove
-- Single `imageUrl` field from createDesign/updateDesign backend signatures (replaced by `imageUrls` array; imageUrl becomes a derived property)
+- The redundant admin token init call inside the retry loop in `useUploadImage` (moved to before the loop)
+- Sample data fallback in EmbroideryScreen when queries have returned (even if empty)
 
 ## Implementation Plan
 
-### Backend (main.mo)
-1. Add `imageUrls: [Text]` to Design type; keep `imageUrl` as first element accessor for queries
-2. Update `createDesign` signature: accept `imageUrls: [Text]` instead of single `imageUrl: Text`
-3. Update `updateDesign` signature: accept `imageUrls: [Text]`
-4. Add `createDesignBulk(entries: [{designCode, imageUrl}])` for efficient bulk creation — each entry uses defaults (category="All Embroidery Works", workType="Embroidery", isBridal=false, isTrending=false)
-5. Remove admin-only check from `createMeasurement` so customers can book stitching
+1. **SplashScreen fix**: Add `logoLoaded` state; only start the exit timer after `onLoad` or `onError` fires on the logo `<img>`. Add `onError` handler that replaces image with inline "VEW" styled div. Cap max wait at 3s.
 
-### Frontend
-1. Update `backend.d.ts` to reflect new signatures
-2. Update `useCreateDesign`, `useUpdateDesign` mutations to pass `imageUrls`
-3. Add `useCreateDesignBulk` mutation
-4. **DesignCard**: read `imageUrls[0]` or fallback to `imageUrl`; show dot indicator for multi-image
-5. **DesignDetailModal image section**: build touch-gesture swiper (translate CSS, touch events); add pinch-zoom with CSS transform; double-tap zoom; drag when zoomed
-6. **DesignFormPanel**: replace single upload with multi-image upload strip (up to 10), show thumbnail row
-7. **Admin Bulk Upload panel**: new tab or section; file input `multiple` + `max 500`; batch upload with progress bar per file; auto-create design per file
-8. **EmbroideryScreen**: add controlled search input above the grid in All tab; filter designs by designCode
-9. **Compare Designs**: add compare mode toggle button in Embroidery/Blouse screens; when active, tapping a card selects it (up to 2); floating "Compare" button opens CompareModal showing 2 designs side by side
-10. **FavouriteScreen**: load all designs from `useAllDesigns` and filter by localStorage favourite IDs
+2. **Logo fallback everywhere**: In SplashScreen, App.tsx header logo images -- add `onError` that hides the `<img>` and shows a fallback "VEW" badge div.
+
+3. **Upload auth fix in useUploadImage**: Move the admin token init to before the `for` loop. Initialize once. If it fails, throw immediately. Inside the loop, create a fresh agent but skip the init call.
+
+4. **Gallery refresh fix**: In `useCreateDesignBulk` mutation `onSuccess`, use `refetchQueries({ queryKey: ['designs'], type: 'active' })` to force immediate active query refresh.
+
+5. **EmbroideryScreen empty state**: After `allQueriesReturned` is true and `embroideryDesigns.length === 0`, show empty state with "No designs yet" message instead of sample data. This ensures newly uploaded designs appear immediately.
+
+6. **Add Design validation**: In `DesignFormPanel`, validate `form.imageUrls.length > 0` before calling `onSave`. Show inline error message if no images selected.
+
+7. **Bulk Upload reset**: Fix `handleClear` in `BulkUploadPanel` to reset `isDone` too. After upload completes (isDone=true), show a "Upload More Images" button that calls `handleClear`.
+
+8. **HomeScreen sample data**: Only fall back to sample data when `isLoading` is true. Once queries return (even empty), show real data.
+
+9. **Performance**: Add `loading="lazy"` and `decoding="async"` to all design grid images. Add `staleTime: 30_000` to `useGetNextDesignCode` to avoid hammering the backend.
+
+10. **Admin login**: Confirm existing logic is correct (it was fixed in v5). No changes needed unless a regression is found during implementation.

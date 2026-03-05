@@ -1,19 +1,20 @@
 import Array "mo:core/Array";
-import Iter "mo:core/Iter";
 import Text "mo:core/Text";
 import Map "mo:core/Map";
-import Runtime "mo:core/Runtime";
-import Time "mo:core/Time";
+import Iter "mo:core/Iter";
 import Nat "mo:core/Nat";
 import Int "mo:core/Int";
+import Runtime "mo:core/Runtime";
 import Order "mo:core/Order";
+import Time "mo:core/Time";
 import Principal "mo:core/Principal";
+
+
 import MixinStorage "blob-storage/Mixin";
 import MixinAuthorization "authorization/MixinAuthorization";
 import AccessControl "authorization/access-control";
-import Migration "migration";
 
-(with migration = Migration.run)
+
 actor {
   include MixinStorage();
 
@@ -47,8 +48,40 @@ actor {
   };
 
   type BulkCreateEntry = {
-    designCode : Text;
     imageUrl : Text;
+    category : Text;
+  };
+
+  type Customer = {
+    id : Nat;
+    name : Text;
+    phone : Text;
+    address : Text;
+    bust : Text;
+    waist : Text;
+    shoulder : Text;
+    sleeveLength : Text;
+    blouseLength : Text;
+    frontNeck : Text;
+    backNeck : Text;
+    createdAt : Time.Time;
+  };
+
+  type OrderStatus = {
+    #pending;
+    #inStitching;
+    #ready;
+    #delivered;
+  };
+
+  type Order = {
+    id : Nat;
+    customerId : Nat;
+    workType : Text;
+    designCode : Text;
+    deliveryDate : Text;
+    status : OrderStatus;
+    createdAt : Time.Time;
   };
 
   var nextDesignId = 0;
@@ -57,6 +90,12 @@ actor {
   let designs = Map.empty<Nat, Design>();
   let measurements = Map.empty<Nat, Measurement>();
   let userProfiles = Map.empty<Principal, UserProfile>();
+
+  var nextCustomerId = 0;
+  var nextOrderId = 0;
+
+  let customers = Map.empty<Nat, Customer>();
+  let orders = Map.empty<Nat, Order>();
 
   let accessControlState = AccessControl.initState();
   include MixinAuthorization(accessControlState);
@@ -89,6 +128,58 @@ actor {
     userProfiles.add(caller, profile);
   };
 
+  // === Design Code Logic ===
+  func getPrefix(category : Text) : Text {
+    switch (category) {
+      case ("All Embroidery Works" or "All Embroidery") { "VEW-AE" };
+      case ("Ready Blouse Embroidery") { "VEW-RB" };
+      case ("Simple Blouse") { "VEW-BS" };
+      case ("Princess Cut Blouse") { "VEW-BP" };
+      case ("Boat Neck Blouse") { "VEW-BN" };
+      case ("Collar Blouse") { "VEW-BC" };
+      case ("Fashion Blouse") { "VEW-BF" };
+      case (_other) { "VEW-AE" };
+    };
+  };
+
+  func getNextDesignNumber(prefix : Text) : Nat {
+    var maxNum = 0;
+    for (d in designs.values()) {
+      if (d.designCode.startsWith(#text(prefix))) {
+        let parts = d.designCode.split(#char('-'));
+        var count = 0;
+        for (p in parts) {
+          count += 1;
+          if (count == 3) {
+            switch (Nat.fromText(p)) {
+              case (?num) { if (num > maxNum) { maxNum := num } };
+              case (null) {};
+            };
+          };
+        };
+      };
+    };
+    maxNum + 1;
+  };
+
+  func formatNumber(num : Nat) : Text {
+    if (num < 10) { return "00" # num.toText() };
+    if (num < 100) { return "0" # num.toText() };
+    num.toText();
+  };
+
+  func getWorkType(category : Text) : Text {
+    switch (category) {
+      case ("All Embroidery Works" or "All Embroidery" or "Ready Blouse Embroidery") {
+        "Embroidery";
+      };
+      case (
+        "Simple Blouse" or "Princess Cut Blouse" or "Boat Neck Blouse" or "Collar Blouse" or "Fashion Blouse"
+      ) { "Blouse Stitching" };
+      case (_other) { "Embroidery" };
+    };
+  };
+
   // === Public Design (Catalog) Management ===
   public shared ({ caller }) func createDesign(
     designCode : Text,
@@ -96,7 +187,7 @@ actor {
     workType : Text,
     imageUrls : [Text],
     isBridal : Bool,
-    isTrending : Bool
+    isTrending : Bool,
   ) : async () {
     if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
       Runtime.trap("Unauthorized: Only admins can create designs");
@@ -117,25 +208,75 @@ actor {
     nextDesignId += 1;
   };
 
-  public shared ({ caller }) func createDesignBulk(entries : [BulkCreateEntry]) : async () {
+  public query ({ caller }) func getNextDesignCode(category : Text) : async Text {
     if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
-      Runtime.trap("Unauthorized: Only admins can create designs in bulk");
+      Runtime.trap("Unauthorized: Only admins can preview design codes");
     };
+    let prefix = getPrefix(category);
+    let nextNum = getNextDesignNumber(prefix);
+    let numStr = formatNumber(nextNum);
+    prefix # "-" # numStr;
+  };
+
+  public shared ({ caller }) func createDesignWithAutoCode(
+    category : Text,
+    workType : Text,
+    imageUrls : [Text],
+    isBridal : Bool,
+    isTrending : Bool,
+  ) : async Text {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
+      Runtime.trap("Unauthorized: Only admins can create designs");
+    };
+    let prefix = getPrefix(category);
+    let nextNum = getNextDesignNumber(prefix);
+    let code = prefix # "-" # formatNumber(nextNum);
+
+    let design : Design = {
+      id = nextDesignId;
+      designCode = code;
+      category;
+      workType;
+      imageUrls;
+      isBridal;
+      isTrending;
+      isNew = true;
+      createdAt = Time.now();
+    };
+
+    designs.add(nextDesignId, design);
+    nextDesignId += 1;
+    code;
+  };
+
+  public shared ({ caller }) func createDesignBulk(entries : [BulkCreateEntry]) : async Nat {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
+      Runtime.trap("Unauthorized: Only admins can bulk create designs");
+    };
+    var countCreated = 0;
+
     for (entry in entries.values()) {
+      let prefix = getPrefix(entry.category);
+      let nextNum = getNextDesignNumber(prefix);
+      let code = prefix # "-" # formatNumber(nextNum);
+
       let design : Design = {
         id = nextDesignId;
-        designCode = entry.designCode;
-        category = "All Embroidery Works";
-        workType = "Embroidery";
+        designCode = code;
+        category = entry.category;
+        workType = getWorkType(entry.category);
         imageUrls = [entry.imageUrl];
         isBridal = false;
         isTrending = false;
         isNew = true;
         createdAt = Time.now();
       };
+
       designs.add(nextDesignId, design);
       nextDesignId += 1;
+      countCreated += 1;
     };
+    countCreated;
   };
 
   public shared ({ caller }) func updateDesign(
@@ -143,15 +284,13 @@ actor {
     designCode : Text,
     category : Text,
     workType : Text,
-    imageUrls : [Text]
+    imageUrls : [Text],
   ) : async () {
     if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
       Runtime.trap("Unauthorized: Only admins can update designs");
     };
     switch (designs.get(id)) {
-      case (null) {
-        Runtime.trap("Design does not exist");
-      };
+      case (null) { Runtime.trap("Design does not exist") };
       case (?existing) {
         let updated : Design = {
           designCode;
@@ -252,6 +391,206 @@ actor {
     designs.values().toArray().filter(func(d) { d.isTrending });
   };
 
+  // === Customer Management ===
+
+  // (admin only for all except createCustomer which needs user role)
+  public shared ({ caller }) func createCustomer(
+    name : Text,
+    phone : Text,
+    address : Text,
+    bust : Text,
+    waist : Text,
+    shoulder : Text,
+    sleeveLength : Text,
+    blouseLength : Text,
+    frontNeck : Text,
+    backNeck : Text,
+  ) : async () {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can create customers");
+    };
+
+    let newCustomer : Customer = {
+      id = nextCustomerId;
+      name;
+      phone;
+      address;
+      bust;
+      waist;
+      shoulder;
+      sleeveLength;
+      blouseLength;
+      frontNeck;
+      backNeck;
+      createdAt = Time.now();
+    };
+
+    customers.add(nextCustomerId, newCustomer);
+    nextCustomerId += 1;
+  };
+
+  public shared ({ caller }) func updateCustomer(
+    id : Nat,
+    name : Text,
+    phone : Text,
+    address : Text,
+    bust : Text,
+    waist : Text,
+    shoulder : Text,
+    sleeveLength : Text,
+    blouseLength : Text,
+    frontNeck : Text,
+    backNeck : Text,
+  ) : async () {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
+      Runtime.trap("Unauthorized: Only admins can update customers");
+    };
+    switch (customers.get(id)) {
+      case (null) { Runtime.trap("Customer not found") };
+      case (?existing) {
+        let updated : Customer = {
+          id = existing.id;
+          name;
+          phone;
+          address;
+          bust;
+          waist;
+          shoulder;
+          sleeveLength;
+          blouseLength;
+          frontNeck;
+          backNeck;
+          createdAt = existing.createdAt;
+        };
+        customers.add(id, updated);
+      };
+    };
+  };
+
+  public shared ({ caller }) func deleteCustomer(id : Nat) : async () {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
+      Runtime.trap("Unauthorized: Only admins can delete customers");
+    };
+
+    switch (customers.get(id)) {
+      case (null) { Runtime.trap("Customer not found") };
+      case (?_existing) { customers.remove(id) };
+    };
+  };
+
+  public query ({ caller }) func getAllCustomers() : async [Customer] {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
+      Runtime.trap("Unauthorized: Only admins can get all customers");
+    };
+    customers.values().toArray();
+  };
+
+  public query ({ caller }) func getCustomer(id : Nat) : async ?Customer {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
+      Runtime.trap("Unauthorized: Only admins can get customers");
+    };
+    customers.get(id);
+  };
+
+  // === Order Management ===
+
+  public shared ({ caller }) func createOrder(
+    customerId : Nat,
+    workType : Text,
+    designCode : Text,
+    deliveryDate : Text,
+    status : OrderStatus,
+  ) : async () {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
+      Runtime.trap("Unauthorized: Only admins can create orders");
+    };
+
+    let order : Order = {
+      id = nextOrderId;
+      customerId;
+      workType;
+      designCode;
+      deliveryDate;
+      status;
+      createdAt = Time.now();
+    };
+
+    orders.add(nextOrderId, order);
+    nextOrderId += 1;
+  };
+
+  public shared ({ caller }) func updateOrder(
+    id : Nat,
+    workType : Text,
+    designCode : Text,
+    deliveryDate : Text,
+  ) : async () {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
+      Runtime.trap("Unauthorized: Only admins can update orders");
+    };
+    switch (orders.get(id)) {
+      case (null) { Runtime.trap("Order not found") };
+      case (?existing) {
+        let updated : Order = {
+          id = existing.id;
+          customerId = existing.customerId;
+          workType;
+          designCode;
+          deliveryDate;
+          status = existing.status;
+          createdAt = existing.createdAt;
+        };
+        orders.add(id, updated);
+      };
+    };
+  };
+
+  public shared ({ caller }) func updateOrderStatus(id : Nat, status : OrderStatus) : async () {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
+      Runtime.trap("Unauthorized: Only admins can update order status");
+    };
+    switch (orders.get(id)) {
+      case (null) { Runtime.trap("Order not found") };
+      case (?existing) {
+        let updated : Order = {
+          id = existing.id;
+          customerId = existing.customerId;
+          workType = existing.workType;
+          designCode = existing.designCode;
+          deliveryDate = existing.deliveryDate;
+          status;
+          createdAt = existing.createdAt;
+        };
+        orders.add(id, updated);
+      };
+    };
+  };
+
+  public shared ({ caller }) func deleteOrder(id : Nat) : async () {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
+      Runtime.trap("Unauthorized: Only admins can delete orders");
+    };
+
+    switch (orders.get(id)) {
+      case (null) { Runtime.trap("Order not found") };
+      case (?_existing) { orders.remove(id) };
+    };
+  };
+
+  public query ({ caller }) func getAllOrders() : async [Order] {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
+      Runtime.trap("Unauthorized: Only admins can get all orders");
+    };
+    orders.values().toArray();
+  };
+
+  public query ({ caller }) func getCustomerOrders(customerId : Nat) : async [Order] {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
+      Runtime.trap("Unauthorized: Only admins can get customer orders");
+    };
+    orders.values().toArray().filter(func(o) { o.customerId == customerId });
+  };
+
   // === Customer Measurements (for Booking Stitching) ===
   public shared ({ caller }) func createMeasurement(
     name : Text,
@@ -261,8 +600,11 @@ actor {
     shoulder : Text,
     sleeveLength : Text,
     neck : Text,
-    blouseLength : Text
+    blouseLength : Text,
   ) : async () {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can submit measurements");
+    };
     let measurement : Measurement = {
       id = nextMeasurementId;
       name;
@@ -288,7 +630,7 @@ actor {
     shoulder : Text,
     sleeveLength : Text,
     neck : Text,
-    blouseLength : Text
+    blouseLength : Text,
   ) : async () {
     if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
       Runtime.trap("Unauthorized: Only admins can update measurements");

@@ -7,14 +7,26 @@ interface SplashScreenProps {
 
 export function SplashScreen({ onComplete }: SplashScreenProps) {
   const [visible, setVisible] = useState(true);
+  const [logoReady, setLogoReady] = useState(false);
+  const [imgError, setImgError] = useState(false);
 
+  // Safety timeout: if the logo hasn't loaded in 3s, proceed anyway
   useEffect(() => {
+    const safetyTimer = setTimeout(() => {
+      setLogoReady(true);
+    }, 3000);
+    return () => clearTimeout(safetyTimer);
+  }, []);
+
+  // Start the exit timer only after logo is ready (loaded or errored)
+  useEffect(() => {
+    if (!logoReady) return;
     const timer = setTimeout(() => {
       setVisible(false);
       setTimeout(onComplete, 400);
     }, 2200);
     return () => clearTimeout(timer);
-  }, [onComplete]);
+  }, [logoReady, onComplete]);
 
   return (
     <AnimatePresence>
@@ -33,12 +45,27 @@ export function SplashScreen({ onComplete }: SplashScreenProps) {
             className="mb-6 relative"
           >
             {/* VEW Logo Image */}
-            <div className="w-28 h-28 rounded-3xl overflow-hidden shadow-lg shadow-vew-sky/20 flex items-center justify-center bg-gradient-to-br from-white to-vew-sky-light border border-vew-sky/20">
-              <img
-                src="/assets/generated/vew-logo.dim_200x200.png"
-                alt="VEW Logo"
-                className="w-full h-full object-contain p-2"
-              />
+            <div className="w-28 h-28 rounded-3xl overflow-hidden shadow-lg shadow-vew-sky/20 flex items-center justify-center bg-gradient-to-br from-white to-vew-sky-light border border-vew-sky/20 relative">
+              {!imgError && (
+                <img
+                  src="/assets/generated/vew-logo.dim_200x200.png"
+                  alt="VEW Logo"
+                  className="w-full h-full object-contain p-2"
+                  onLoad={() => setLogoReady(true)}
+                  onError={() => {
+                    setImgError(true);
+                    setLogoReady(true);
+                  }}
+                />
+              )}
+              {/* Fallback badge shown when image fails to load */}
+              {imgError && (
+                <div className="absolute inset-0 flex items-center justify-center bg-vew-sky rounded-3xl">
+                  <span className="text-white text-4xl font-extrabold tracking-tight">
+                    VEW
+                  </span>
+                </div>
+              )}
             </div>
           </motion.div>
 

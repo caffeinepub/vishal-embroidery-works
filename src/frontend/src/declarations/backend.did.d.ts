@@ -10,7 +10,21 @@ import type { ActorMethod } from '@icp-sdk/core/agent';
 import type { IDL } from '@icp-sdk/core/candid';
 import type { Principal } from '@icp-sdk/core/principal';
 
-export interface BulkCreateEntry { 'imageUrl' : string, 'designCode' : string }
+export interface BulkCreateEntry { 'imageUrl' : string, 'category' : string }
+export interface Customer {
+  'id' : bigint,
+  'backNeck' : string,
+  'blouseLength' : string,
+  'bust' : string,
+  'name' : string,
+  'createdAt' : Time,
+  'frontNeck' : string,
+  'sleeveLength' : string,
+  'address' : string,
+  'shoulder' : string,
+  'phone' : string,
+  'waist' : string,
+}
 export interface Design {
   'id' : bigint,
   'workType' : string,
@@ -34,6 +48,19 @@ export interface Measurement {
   'phone' : string,
   'waist' : string,
 }
+export interface Order {
+  'id' : bigint,
+  'status' : OrderStatus,
+  'workType' : string,
+  'createdAt' : Time,
+  'deliveryDate' : string,
+  'customerId' : bigint,
+  'designCode' : string,
+}
+export type OrderStatus = { 'pending' : null } |
+  { 'inStitching' : null } |
+  { 'delivered' : null } |
+  { 'ready' : null };
 export type Time = bigint;
 export interface UserProfile { 'name' : string }
 export type UserRole = { 'admin' : null } |
@@ -69,31 +96,77 @@ export interface _SERVICE {
   '_initializeAccessControlWithSecret' : ActorMethod<[string], undefined>,
   'assignCallerUserRole' : ActorMethod<[Principal, UserRole], undefined>,
   'clearAllDesigns' : ActorMethod<[], undefined>,
+  'createCustomer' : ActorMethod<
+    [
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+    ],
+    undefined
+  >,
   'createDesign' : ActorMethod<
     [string, string, string, Array<string>, boolean, boolean],
     undefined
   >,
-  'createDesignBulk' : ActorMethod<[Array<BulkCreateEntry>], undefined>,
+  'createDesignBulk' : ActorMethod<[Array<BulkCreateEntry>], bigint>,
+  'createDesignWithAutoCode' : ActorMethod<
+    [string, string, Array<string>, boolean, boolean],
+    string
+  >,
   'createMeasurement' : ActorMethod<
     [string, string, string, string, string, string, string, string],
     undefined
   >,
+  'createOrder' : ActorMethod<
+    [bigint, string, string, string, OrderStatus],
+    undefined
+  >,
+  'deleteCustomer' : ActorMethod<[bigint], undefined>,
   'deleteDesign' : ActorMethod<[bigint], undefined>,
   'deleteMeasurement' : ActorMethod<[bigint], undefined>,
+  'deleteOrder' : ActorMethod<[bigint], undefined>,
+  'getAllCustomers' : ActorMethod<[], Array<Customer>>,
   'getAllDesigns' : ActorMethod<[], Array<Design>>,
   'getAllMeasurements' : ActorMethod<[], Array<Measurement>>,
+  'getAllOrders' : ActorMethod<[], Array<Order>>,
   'getBridalDesigns' : ActorMethod<[], Array<Design>>,
   'getCallerUserProfile' : ActorMethod<[], [] | [UserProfile]>,
   'getCallerUserRole' : ActorMethod<[], UserRole>,
+  'getCustomer' : ActorMethod<[bigint], [] | [Customer]>,
+  'getCustomerOrders' : ActorMethod<[bigint], Array<Order>>,
   'getDesign' : ActorMethod<[bigint], [] | [Design]>,
   'getDesignsByCategory' : ActorMethod<[string], Array<Design>>,
   'getMeasurement' : ActorMethod<[bigint], [] | [Measurement]>,
+  'getNextDesignCode' : ActorMethod<[string], string>,
   'getTrendingDesigns' : ActorMethod<[], Array<Design>>,
   'getUserProfile' : ActorMethod<[Principal], [] | [UserProfile]>,
   'isCallerAdmin' : ActorMethod<[], boolean>,
   'saveCallerUserProfile' : ActorMethod<[UserProfile], undefined>,
   'setBridal' : ActorMethod<[bigint, boolean], undefined>,
   'setTrending' : ActorMethod<[bigint, boolean], undefined>,
+  'updateCustomer' : ActorMethod<
+    [
+      bigint,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+    ],
+    undefined
+  >,
   'updateDesign' : ActorMethod<
     [bigint, string, string, string, Array<string>],
     undefined
@@ -102,6 +175,8 @@ export interface _SERVICE {
     [bigint, string, string, string, string, string, string, string, string],
     undefined
   >,
+  'updateOrder' : ActorMethod<[bigint, string, string, string], undefined>,
+  'updateOrderStatus' : ActorMethod<[bigint, OrderStatus], undefined>,
 }
 export declare const idlService: IDL.ServiceClass;
 export declare const idlInitArgs: IDL.Type[];

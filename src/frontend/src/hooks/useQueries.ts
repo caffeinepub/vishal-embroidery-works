@@ -1,5 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Design, Measurement } from "../backend.d";
+import { createActorWithConfig } from "../config";
+import { getSecretParameter } from "../utils/urlParams";
 import { useActor } from "./useActor";
 
 // ─── Design Queries ───────────────────────────────────────────────────────────
@@ -78,23 +80,44 @@ export function useAllMeasurements() {
   });
 }
 
+// Helper: create an admin-authenticated actor using the Caffeine admin token
+async function createAdminActor() {
+  const actor = await createActorWithConfig();
+  const adminToken = getSecretParameter("caffeineAdminToken") || "";
+  if (adminToken) {
+    await actor._initializeAccessControlWithSecret(adminToken);
+  }
+  return actor;
+}
+
+// ─── Design Code Preview ──────────────────────────────────────────────────────
+
+export function useGetNextDesignCode(category: string) {
+  return useQuery<string>({
+    queryKey: ["design", "nextCode", category],
+    queryFn: async () => {
+      const actor = await createAdminActor();
+      return actor.getNextDesignCode(category);
+    },
+    enabled: !!category,
+    staleTime: 30_000,
+  });
+}
+
 // ─── Design Mutations ─────────────────────────────────────────────────────────
 
 export function useCreateDesign() {
-  const { actor } = useActor();
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (args: {
-      designCode: string;
       category: string;
       workType: string;
       imageUrls: string[];
       isBridal: boolean;
       isTrending: boolean;
-    }) => {
-      if (!actor) throw new Error("Not connected");
-      await actor.createDesign(
-        args.designCode,
+    }): Promise<string> => {
+      const actor = await createAdminActor();
+      return actor.createDesignWithAutoCode(
         args.category,
         args.workType,
         args.imageUrls,
@@ -104,32 +127,63 @@ export function useCreateDesign() {
     },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["designs"] });
+      void qc.refetchQueries({ queryKey: ["designs"], type: "active" });
     },
   });
 }
 
 export function useCreateDesignBulk() {
-  const { actor } = useActor();
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (
-      entries: Array<{ designCode: string; imageUrl: string }>,
-    ) => {
-      if (!actor) throw new Error("Not connected");
-      await actor.createDesignBulk(entries);
+      entries: Array<{ imageUrl: string; category: string }>,
+    ): Promise<{ savedCount: number; skippedCount: number }> => {
+      // Always create a fresh actor and initialize it with the admin token
+      // so that createDesignBulk (which requires admin permission) succeeds
+      // regardless of whether the user is authenticated via Internet Identity.
+      const actor = await createActorWithConfig();
+      const adminToken = getSecretParameter("caffeineAdminToken") || "";
+      if (adminToken) {
+        await actor._initializeAccessControlWithSecret(adminToken);
+      }
+
+      // Split into chunks of 20 to stay well within ICP message size limits
+      const CHUNK_SIZE = 20;
+      let totalSaved = 0;
+
+      for (let i = 0; i < entries.length; i += CHUNK_SIZE) {
+        const chunk = entries.slice(i, i + CHUNK_SIZE);
+        try {
+          const saved = await actor.createDesignBulk(chunk);
+          totalSaved += Number(saved);
+        } catch (err) {
+          // Log chunk error but continue processing remaining chunks
+          console.error(
+            `Bulk save chunk ${Math.floor(i / CHUNK_SIZE) + 1} failed:`,
+            err,
+          );
+        }
+        // Small delay between chunks to avoid rate limiting
+        if (i + CHUNK_SIZE < entries.length) {
+          await new Promise((r) => setTimeout(r, 150));
+        }
+      }
+
+      const skippedCount = entries.length - totalSaved;
+      return { savedCount: totalSaved, skippedCount };
     },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["designs"] });
+      void qc.refetchQueries({ queryKey: ["designs"], type: "active" });
     },
   });
 }
 
 export function useClearAllDesigns() {
-  const { actor } = useActor();
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async () => {
-      if (!actor) throw new Error("Not connected");
+      const actor = await createAdminActor();
       await actor.clearAllDesigns();
     },
     onSuccess: () => {
@@ -139,7 +193,6 @@ export function useClearAllDesigns() {
 }
 
 export function useUpdateDesign() {
-  const { actor } = useActor();
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (args: {
@@ -149,7 +202,7 @@ export function useUpdateDesign() {
       workType: string;
       imageUrls: string[];
     }) => {
-      if (!actor) throw new Error("Not connected");
+      const actor = await createAdminActor();
       await actor.updateDesign(
         args.id,
         args.designCode,
@@ -165,11 +218,10 @@ export function useUpdateDesign() {
 }
 
 export function useDeleteDesign() {
-  const { actor } = useActor();
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (id: bigint) => {
-      if (!actor) throw new Error("Not connected");
+      const actor = await createAdminActor();
       await actor.deleteDesign(id);
     },
     onSuccess: () => {
@@ -179,11 +231,10 @@ export function useDeleteDesign() {
 }
 
 export function useSetTrending() {
-  const { actor } = useActor();
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ id, flag }: { id: bigint; flag: boolean }) => {
-      if (!actor) throw new Error("Not connected");
+      const actor = await createAdminActor();
       await actor.setTrending(id, flag);
     },
     onSuccess: () => {
@@ -193,11 +244,10 @@ export function useSetTrending() {
 }
 
 export function useSetBridal() {
-  const { actor } = useActor();
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ id, flag }: { id: bigint; flag: boolean }) => {
-      if (!actor) throw new Error("Not connected");
+      const actor = await createAdminActor();
       await actor.setBridal(id, flag);
     },
     onSuccess: () => {
@@ -222,8 +272,9 @@ export function useCreateMeasurement() {
       neck: string;
       blouseLength: string;
     }) => {
-      if (!actor) throw new Error("Not connected");
-      await actor.createMeasurement(
+      // Use the regular actor if available, otherwise fall back to admin actor
+      const targetActor = actor ?? (await createAdminActor());
+      await targetActor.createMeasurement(
         args.name,
         args.phone,
         args.bust,
@@ -241,7 +292,6 @@ export function useCreateMeasurement() {
 }
 
 export function useUpdateMeasurement() {
-  const { actor } = useActor();
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (args: {
@@ -255,7 +305,7 @@ export function useUpdateMeasurement() {
       neck: string;
       blouseLength: string;
     }) => {
-      if (!actor) throw new Error("Not connected");
+      const actor = await createAdminActor();
       await actor.updateMeasurement(
         args.id,
         args.name,
@@ -275,15 +325,229 @@ export function useUpdateMeasurement() {
 }
 
 export function useDeleteMeasurement() {
-  const { actor } = useActor();
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (id: bigint) => {
-      if (!actor) throw new Error("Not connected");
+      const actor = await createAdminActor();
       await actor.deleteMeasurement(id);
     },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["measurements"] });
+    },
+  });
+}
+
+// ─── Customer Queries ─────────────────────────────────────────────────────────
+
+export function useAllCustomers() {
+  return useQuery<import("../backend.d").Customer[]>({
+    queryKey: ["customers", "all"],
+    queryFn: async () => {
+      const actor = await createAdminActor();
+      return actor.getAllCustomers();
+    },
+  });
+}
+
+export function useCustomerOrders(customerId: bigint | null) {
+  return useQuery<import("../backend.d").Order[]>({
+    queryKey: ["orders", "customer", customerId?.toString()],
+    queryFn: async () => {
+      if (customerId === null) return [];
+      const actor = await createAdminActor();
+      return actor.getCustomerOrders(customerId);
+    },
+    enabled: customerId !== null,
+  });
+}
+
+export function useAllOrders() {
+  return useQuery<import("../backend.d").Order[]>({
+    queryKey: ["orders", "all"],
+    queryFn: async () => {
+      const actor = await createAdminActor();
+      return actor.getAllOrders();
+    },
+  });
+}
+
+// ─── Customer Mutations ───────────────────────────────────────────────────────
+
+export function useCreateCustomer() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (args: {
+      name: string;
+      phone: string;
+      address: string;
+      bust: string;
+      waist: string;
+      shoulder: string;
+      sleeveLength: string;
+      blouseLength: string;
+      frontNeck: string;
+      backNeck: string;
+    }) => {
+      const actor = await createAdminActor();
+      await actor.createCustomer(
+        args.name,
+        args.phone,
+        args.address,
+        args.bust,
+        args.waist,
+        args.shoulder,
+        args.sleeveLength,
+        args.blouseLength,
+        args.frontNeck,
+        args.backNeck,
+      );
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["customers"] });
+    },
+  });
+}
+
+export function useUpdateCustomer() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (args: {
+      id: bigint;
+      name: string;
+      phone: string;
+      address: string;
+      bust: string;
+      waist: string;
+      shoulder: string;
+      sleeveLength: string;
+      blouseLength: string;
+      frontNeck: string;
+      backNeck: string;
+    }) => {
+      const actor = await createAdminActor();
+      await actor.updateCustomer(
+        args.id,
+        args.name,
+        args.phone,
+        args.address,
+        args.bust,
+        args.waist,
+        args.shoulder,
+        args.sleeveLength,
+        args.blouseLength,
+        args.frontNeck,
+        args.backNeck,
+      );
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["customers"] });
+    },
+  });
+}
+
+export function useDeleteCustomer() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: bigint) => {
+      const actor = await createAdminActor();
+      await actor.deleteCustomer(id);
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["customers"] });
+      void qc.invalidateQueries({ queryKey: ["orders"] });
+    },
+  });
+}
+
+// ─── Order Mutations ──────────────────────────────────────────────────────────
+
+export function useCreateOrder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (args: {
+      customerId: bigint;
+      workType: string;
+      designCode: string;
+      deliveryDate: string;
+      status: import("../backend.d").OrderStatus;
+    }) => {
+      const actor = await createAdminActor();
+      await actor.createOrder(
+        args.customerId,
+        args.workType,
+        args.designCode,
+        args.deliveryDate,
+        args.status,
+      );
+    },
+    onSuccess: (_data, vars) => {
+      void qc.invalidateQueries({
+        queryKey: ["orders", "customer", vars.customerId.toString()],
+      });
+      void qc.invalidateQueries({ queryKey: ["orders", "all"] });
+    },
+  });
+}
+
+export function useUpdateOrder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (args: {
+      id: bigint;
+      customerId: bigint;
+      workType: string;
+      designCode: string;
+      deliveryDate: string;
+    }) => {
+      const actor = await createAdminActor();
+      await actor.updateOrder(
+        args.id,
+        args.workType,
+        args.designCode,
+        args.deliveryDate,
+      );
+    },
+    onSuccess: (_data, vars) => {
+      void qc.invalidateQueries({
+        queryKey: ["orders", "customer", vars.customerId.toString()],
+      });
+      void qc.invalidateQueries({ queryKey: ["orders", "all"] });
+    },
+  });
+}
+
+export function useUpdateOrderStatus() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (args: {
+      id: bigint;
+      customerId: bigint;
+      status: import("../backend.d").OrderStatus;
+    }) => {
+      const actor = await createAdminActor();
+      await actor.updateOrderStatus(args.id, args.status);
+    },
+    onSuccess: (_data, vars) => {
+      void qc.invalidateQueries({
+        queryKey: ["orders", "customer", vars.customerId.toString()],
+      });
+      void qc.invalidateQueries({ queryKey: ["orders", "all"] });
+    },
+  });
+}
+
+export function useDeleteOrder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (args: { id: bigint; customerId: bigint }) => {
+      const actor = await createAdminActor();
+      await actor.deleteOrder(args.id);
+    },
+    onSuccess: (_data, vars) => {
+      void qc.invalidateQueries({
+        queryKey: ["orders", "customer", vars.customerId.toString()],
+      });
+      void qc.invalidateQueries({ queryKey: ["orders", "all"] });
     },
   });
 }
