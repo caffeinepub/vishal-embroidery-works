@@ -62,9 +62,10 @@ import {
   useUpdateDesign,
 } from "../../hooks/useQueries";
 import { useAdminSessionStore } from "../../store/adminSessionStore";
-import { getAdminActor, getAdminSession } from "../../utils/adminActor";
 import { uploadBatchToCloudinary } from "../../utils/cloudinaryUpload";
 import { CloudinaryImageUploader } from "../shared/CloudinaryImageUploader";
+
+// ─── Constants ────────────────────────────────────────────────────────────────
 
 const CATEGORIES = [
   "All Embroidery Works",
@@ -101,55 +102,40 @@ const emptyDesignForm: DesignFormData = {
 };
 
 // ─── Auth Status Banner ───────────────────────────────────────────────────────
-// Reads directly from the Zustand store — no duplicate getAdminSession() calls.
-// Green  = token found + session initialised → uploads will succeed.
-// Amber  = anonymous session → Cloudinary uploads work, ICP saves may fail.
-// Red    = session completely failed → uploads will fail.
-
-type AuthTokenStatus = "checking" | "ok" | "limited" | "missing";
+// Reads from the Zustand store to display token/session health.
 
 function AuthStatusBanner() {
-  const { status: storeStatus, session, error } = useAdminSessionStore();
+  const { status, session, error } = useAdminSessionStore();
 
-  let status: AuthTokenStatus = "checking";
-  let detail = "";
+  if (status === "loading" || status === "idle") return null;
 
-  if (storeStatus === "loading" || storeStatus === "idle") {
-    status = "checking";
-  } else if (storeStatus === "error") {
-    status = "missing";
-    detail = error ?? "Unknown error initialising admin session.";
-  } else if (storeStatus === "ready") {
-    if (session?.isAnonymous) {
-      status = "limited";
-      detail =
-        "Photo uploads (Cloudinary) work. Design saves to ICP backend may fail — open via the Caffeine admin link for full access.";
-    } else {
-      status = "ok";
-      detail = "Admin session active — all uploads and saves are authorised.";
-    }
-  }
-
-  if (status === "checking") return null;
-
-  if (status === "ok") {
+  if (status === "error") {
     return (
       <div
-        data-ocid="admin.auth.success_state"
-        className="mx-4 mt-3 flex items-start gap-2 bg-green-50 border border-green-200 rounded-xl px-3 py-2"
+        data-ocid="admin.auth.error_state"
+        className="mx-4 mt-3 flex items-start gap-2 bg-red-50 border border-red-200 rounded-xl px-3 py-2"
       >
-        <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0 mt-0.5" />
+        <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
         <div>
-          <p className="text-[11px] font-semibold text-green-700">
-            Authentication Status: Active
+          <p className="text-[11px] font-semibold text-red-700">
+            Authentication Status: Unauthorized
           </p>
-          <p className="text-[10px] text-green-600 leading-snug">{detail}</p>
+          <p className="text-[10px] text-red-600 leading-snug">
+            Uploads will fail. Open the app via your Caffeine admin link and
+            refresh.
+          </p>
+          {error && (
+            <p className="text-[10px] text-red-500 mt-0.5 font-mono break-all">
+              {error.substring(0, 120)}
+            </p>
+          )}
         </div>
       </div>
     );
   }
 
-  if (status === "limited") {
+  // status === "ready"
+  if (session?.isAnonymous) {
     return (
       <div
         data-ocid="admin.auth.success_state"
@@ -158,9 +144,12 @@ function AuthStatusBanner() {
         <CheckCircle2 className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
         <div>
           <p className="text-[11px] font-semibold text-amber-700">
-            Authentication Status: Active
+            Authentication Status: Limited
           </p>
-          <p className="text-[10px] text-amber-600 leading-snug">{detail}</p>
+          <p className="text-[10px] text-amber-600 leading-snug">
+            Photo uploads (Cloudinary) work. ICP design saves may fail — open
+            via your Caffeine admin link for full access.
+          </p>
         </div>
       </div>
     );
@@ -168,33 +157,98 @@ function AuthStatusBanner() {
 
   return (
     <div
-      data-ocid="admin.auth.error_state"
-      className="mx-4 mt-3 flex items-start gap-2 bg-red-50 border border-red-200 rounded-xl px-3 py-2"
+      data-ocid="admin.auth.success_state"
+      className="mx-4 mt-3 flex items-start gap-2 bg-green-50 border border-green-200 rounded-xl px-3 py-2"
     >
-      <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+      <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0 mt-0.5" />
       <div>
-        <p className="text-[11px] font-semibold text-red-700">
-          Authentication Status: Unauthorized
+        <p className="text-[11px] font-semibold text-green-700">
+          Authentication Status: Active
         </p>
-        <p className="text-[10px] text-red-600 leading-snug">
-          Uploads will fail. Open this app via the correct admin link, then
-          refresh the page.
-        </p>
-        <p className="text-[10px] text-red-500 mt-0.5 font-mono break-all">
-          {detail}
+        <p className="text-[10px] text-green-600 leading-snug">
+          Admin session active — all uploads and saves are authorised.
         </p>
       </div>
     </div>
   );
 }
 
+// ─── Config Ready Boundary ────────────────────────────────────────────────────
+// Wraps Design Upload and Bulk Upload panels so they never render before the
+// session is confirmed as ready. Prevents "Cannot read properties of undefined"
+// crashes from components that call hooks requiring a configured actor.
+
+function ConfigReadyBoundary({ children }: { children: React.ReactNode }) {
+  const { status, error, initSession } = useAdminSessionStore();
+
+  if (status === "idle" || status === "loading") {
+    return (
+      <div
+        data-ocid="admin.session.loading_state"
+        className="flex flex-col items-center justify-center gap-4 px-6 py-16"
+      >
+        <div className="w-12 h-12 rounded-2xl bg-vew-sky-light flex items-center justify-center">
+          <Loader2 className="w-6 h-6 text-vew-sky animate-spin" />
+        </div>
+        <div className="text-center">
+          <p className="text-sm font-semibold text-vew-navy">
+            Loading Configuration
+          </p>
+          <p className="text-[11px] text-muted-foreground mt-1">
+            ಕಾನ್ಫಿಗರೇಶನ್ ಲೋಡ್ ಆಗುತ್ತಿದೆ…
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (status === "error") {
+    return (
+      <div
+        data-ocid="admin.config.error_state"
+        className="flex flex-col items-center justify-center gap-4 px-6 py-16"
+      >
+        <div className="w-12 h-12 rounded-2xl bg-red-50 flex items-center justify-center">
+          <AlertCircle className="w-6 h-6 text-red-500" />
+        </div>
+        <div className="text-center">
+          <p className="text-sm font-semibold text-vew-navy">
+            Configuration Unavailable
+          </p>
+          <p className="text-[11px] text-muted-foreground mt-2 leading-snug">
+            The backend could not be reached. Cloudinary uploads still work.
+            Open the app via your Caffeine admin link and refresh to restore
+            full access.
+          </p>
+          {error && (
+            <p className="text-[10px] text-red-500 mt-2 font-mono break-all bg-red-50 rounded-lg p-2">
+              {error.substring(0, 160)}
+            </p>
+          )}
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          className="rounded-xl text-xs"
+          onClick={() => {
+            useAdminSessionStore.setState({ status: "idle" });
+            initSession();
+          }}
+        >
+          Retry
+        </Button>
+      </div>
+    );
+  }
+
+  // status === "ready" — safe to render children
+  return <>{children}</>;
+}
+
 // ─── Admin PIN Login ──────────────────────────────────────────────────────────
-// PIN entry screen — shown when admin opens the panel via 5-second long press.
-// No username, no Google — just the 4-digit PIN.
 
 const PIN_LENGTH = 4;
 
-// Numeric keypad layout
 const KEYPAD: Array<string | null> = [
   "1",
   "2",
@@ -234,16 +288,14 @@ function AdminPinLogin({
     setError("");
 
     if (next.length === PIN_LENGTH) {
-      // Small delay so last dot fills before checking
       setTimeout(() => {
         const ok = loginWithPin(next);
         if (ok) {
-          // Pre-warm via the store — this starts the sequential init immediately
-          // so the dashboard loading gate shows the spinner rather than a blank screen.
+          // Pre-warm the session immediately after login
           useAdminSessionStore
             .getState()
             .initSession()
-            .catch((e) => console.warn("Admin actor pre-warm failed:", e));
+            .catch((e) => console.warn("[AdminPinLogin] pre-warm failed:", e));
           onLoginSuccess();
         } else {
           setShake(true);
@@ -259,22 +311,16 @@ function AdminPinLogin({
 
   return (
     <div className="flex-1 flex flex-col items-center justify-center px-6 py-8 select-none">
-      {/* Icon */}
       <div className="w-16 h-16 rounded-2xl bg-vew-sky-light flex items-center justify-center mb-5 shadow-sm">
         <Lock className="w-8 h-8 text-vew-sky" />
       </div>
-
       <h2 className="text-xl font-bold text-vew-navy mb-1">Admin Access</h2>
       <p className="text-xs text-muted-foreground mb-7 text-center">
         Enter the 4-digit PIN to continue · ಪಿನ್ ನಮೂದಿಸಿ
       </p>
 
-      {/* PIN dots */}
       <div
         className={`flex gap-4 mb-3 transition-transform duration-150 ${shake ? "translate-x-2" : ""}`}
-        style={{
-          animation: shake ? "shake 0.5s ease" : undefined,
-        }}
       >
         {Array.from({ length: PIN_LENGTH }).map((_, i) => (
           <div
@@ -289,17 +335,17 @@ function AdminPinLogin({
         ))}
       </div>
 
-      {error && (
+      {error ? (
         <p
           data-ocid="admin.pin.error_state"
           className="text-xs text-destructive text-center mb-3 bg-destructive/5 rounded-lg py-1.5 px-3"
         >
           {error}
         </p>
+      ) : (
+        <div className="mb-3 h-7" />
       )}
-      {!error && <div className="mb-3 h-7" />}
 
-      {/* Numeric keypad */}
       <div className="grid grid-cols-3 gap-3 w-full max-w-[240px]">
         {KEYPAD.map((key, idx) => {
           if (key === null) {
@@ -336,6 +382,30 @@ function AdminPinLogin({
         <ArrowLeft className="w-4 h-4" />
         Back
       </button>
+    </div>
+  );
+}
+
+// ─── Admin Session Loading Gate ───────────────────────────────────────────────
+// Shown after successful PIN login while the global session is still initialising.
+
+function AdminSessionLoadingGate() {
+  return (
+    <div
+      data-ocid="admin.session.loading_state"
+      className="flex-1 flex flex-col items-center justify-center gap-4 px-6 py-12"
+    >
+      <div className="w-14 h-14 rounded-2xl bg-vew-sky-light flex items-center justify-center">
+        <Loader2 className="w-7 h-7 text-vew-sky animate-spin" />
+      </div>
+      <div className="text-center">
+        <p className="text-sm font-semibold text-vew-navy">
+          Initialising Admin Panel
+        </p>
+        <p className="text-[11px] text-muted-foreground mt-1">
+          Loading configuration… · ಕಾನ್ಫಿಗರೇಶನ್ ಲೋಡ್ ಆಗುತ್ತಿದೆ…
+        </p>
+      </div>
     </div>
   );
 }
@@ -381,7 +451,6 @@ function DesignFormPanel({
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
-        {/* Cloudinary image upload */}
         <CloudinaryImageUploader
           value={form.imageUrls}
           onChange={(urls) => setForm((prev) => ({ ...prev, imageUrls: urls }))}
@@ -389,7 +458,6 @@ function DesignFormPanel({
           disabled={isPending}
         />
 
-        {/* Category */}
         <div>
           <Label className="text-xs mb-1.5 block">Category / ವರ್ಗ *</Label>
           <Select
@@ -412,7 +480,6 @@ function DesignFormPanel({
           </Select>
         </div>
 
-        {/* Design Code — read-only for edit, auto-preview for new */}
         {editingDesign ? (
           <div>
             <Label className="text-xs mb-1.5 block">Design Code / ಡಿಸೈನ್ ಕೋಡ್</Label>
@@ -450,7 +517,6 @@ function DesignFormPanel({
           </div>
         )}
 
-        {/* Work Type */}
         <div>
           <Label className="text-xs mb-1.5 block">Work Type / ಕೆಲಸದ ವಿಧ</Label>
           <Input
@@ -464,7 +530,6 @@ function DesignFormPanel({
           />
         </div>
 
-        {/* Toggles */}
         <div className="space-y-3 pt-1">
           <div className="flex items-center justify-between bg-vew-sky-light/40 rounded-xl px-4 py-3">
             <div className="flex items-center gap-2">
@@ -532,67 +597,11 @@ function DesignFormPanel({
   );
 }
 
-// ─── Canister Health Check Banner ────────────────────────────────────────────
-// Shows a warning if the backend canister is not responding after login.
-// This helps diagnose "Canister is stopped" errors without needing DevTools.
-
-function CanisterHealthBanner() {
-  const [status, setStatus] = useState<"checking" | "ok" | "error">("checking");
-  const [errorMsg, setErrorMsg] = useState("");
-
-  useEffect(() => {
-    let cancelled = false;
-    const check = async () => {
-      try {
-        const actor = await getAdminActor();
-        // Lightweight read call to verify the canister is alive and responding
-        await actor.getNextDesignCode("All Embroidery Works");
-        if (!cancelled) setStatus("ok");
-      } catch (err) {
-        if (!cancelled) {
-          const msg = err instanceof Error ? err.message : String(err);
-          setStatus("error");
-          setErrorMsg(msg);
-          console.error("[CanisterHealth] Canister check failed:", msg);
-        }
-      }
-    };
-    check();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  if (status === "checking" || status === "ok") return null;
-
-  return (
-    <div
-      data-ocid="admin.canister.error_state"
-      className="mx-4 mt-2 flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2"
-    >
-      <AlertCircle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
-      <div>
-        <p className="text-[11px] font-semibold text-amber-700">
-          Backend Canister Unavailable
-        </p>
-        <p className="text-[10px] text-amber-600 leading-snug">
-          The backend may be restarting. Uploads and saves may fail. Please wait
-          a moment and try again.
-        </p>
-        <p className="text-[10px] text-amber-500 mt-0.5 font-mono break-all">
-          {errorMsg.substring(0, 120)}
-        </p>
-      </div>
-    </div>
-  );
-}
-
 // ─── Single Design Upload Panel ───────────────────────────────────────────────
-// Extracted from UnifiedUploadPanel for use in the "Design Upload" tab.
+// ALWAYS rendered inside <ConfigReadyBoundary> — never mounts before config is ready.
 
 function SingleDesignUploadPanel() {
   const [form, setForm] = useState<DesignFormData>(emptyDesignForm);
-
   const createDesign = useCreateDesign();
   const nextCodeQuery = useGetNextDesignCode(form.category);
 
@@ -623,7 +632,6 @@ function SingleDesignUploadPanel() {
 
   return (
     <div className="px-4 py-4 space-y-4">
-      {/* Cloudinary photo upload */}
       <CloudinaryImageUploader
         value={form.imageUrls}
         onChange={(urls) => setForm((prev) => ({ ...prev, imageUrls: urls }))}
@@ -631,7 +639,6 @@ function SingleDesignUploadPanel() {
         disabled={createDesign.isPending}
       />
 
-      {/* Category */}
       <div>
         <Label className="text-xs mb-1.5 block">Category / ವರ್ಗ *</Label>
         <Select
@@ -654,7 +661,6 @@ function SingleDesignUploadPanel() {
         </Select>
       </div>
 
-      {/* Auto code preview */}
       <div
         data-ocid="admin.design_upload.code_preview.panel"
         className="bg-vew-sky-light/40 rounded-xl px-4 py-3"
@@ -683,7 +689,6 @@ function SingleDesignUploadPanel() {
         )}
       </div>
 
-      {/* Work Type */}
       <div>
         <Label className="text-xs mb-1.5 block">Work Type / ಕೆಲಸದ ವಿಧ</Label>
         <Input
@@ -697,7 +702,6 @@ function SingleDesignUploadPanel() {
         />
       </div>
 
-      {/* Toggles */}
       <div className="space-y-3 pt-1">
         <div className="flex items-center justify-between bg-vew-sky-light/40 rounded-xl px-4 py-3">
           <div className="flex items-center gap-2">
@@ -734,7 +738,6 @@ function SingleDesignUploadPanel() {
         </div>
       </div>
 
-      {/* Save button */}
       <Button
         data-ocid="admin.design_upload.submit_button"
         onClick={handleSave}
@@ -754,7 +757,8 @@ function SingleDesignUploadPanel() {
   );
 }
 
-// ─── Bulk Upload Panel (standalone) ──────────────────────────────────────────
+// ─── Bulk Upload Panel ────────────────────────────────────────────────────────
+// ALWAYS rendered inside <ConfigReadyBoundary> — never mounts before config is ready.
 
 function BulkUploadPanel() {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -777,7 +781,6 @@ function BulkUploadPanel() {
     setSelectedFiles(arr);
     setIsDone(false);
     setErrorMsg("");
-    // Reset the input so same selection can be re-triggered
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
@@ -791,7 +794,6 @@ function BulkUploadPanel() {
     setIsDone(false);
     setUploadingProgress({ current: 0, total: selectedFiles.length });
 
-    // Step 1: Upload each file to Cloudinary
     const { successes, failures } = await uploadBatchToCloudinary(
       selectedFiles,
       (fileIdx) => {
@@ -811,7 +813,6 @@ function BulkUploadPanel() {
       return;
     }
 
-    // Step 2: Save to database
     const entries = successes.map((s) => ({
       imageUrl: s.secureUrl,
       category: bulkCategory,
@@ -861,7 +862,6 @@ function BulkUploadPanel() {
         </p>
       </div>
 
-      {/* Category selector */}
       <div>
         <Label className="text-xs mb-1.5 block">
           Category for all designs / ಎಲ್ಲ ಡಿಸೈನ್‌ಗಳಿಗೆ ವರ್ಗ
@@ -887,7 +887,6 @@ function BulkUploadPanel() {
         </Select>
       </div>
 
-      {/* Hidden file input */}
       <input
         ref={fileInputRef}
         type="file"
@@ -899,7 +898,6 @@ function BulkUploadPanel() {
         tabIndex={-1}
       />
 
-      {/* Photo picker button */}
       <button
         type="button"
         data-ocid="admin.bulk_upload.upload_button"
@@ -922,7 +920,6 @@ function BulkUploadPanel() {
         </div>
       </button>
 
-      {/* Upload progress indicator */}
       {uploadingProgress && (
         <div
           data-ocid="admin.bulk_upload.loading_state"
@@ -946,7 +943,6 @@ function BulkUploadPanel() {
         </div>
       )}
 
-      {/* Success state */}
       {isDone && (
         <div
           data-ocid="admin.bulk_upload.success_state"
@@ -965,7 +961,6 @@ function BulkUploadPanel() {
         </div>
       )}
 
-      {/* Error state */}
       {errorMsg && (
         <div
           data-ocid="admin.bulk_upload.error_state"
@@ -976,7 +971,6 @@ function BulkUploadPanel() {
         </div>
       )}
 
-      {/* Action buttons */}
       <div className="flex gap-2">
         {isDone ? (
           <Button
@@ -1083,7 +1077,6 @@ function AnalyticsDashboard() {
 
   return (
     <div className="px-4 py-4 space-y-4">
-      {/* Title */}
       <div className="flex items-center gap-2">
         <BarChart3 className="w-5 h-5 text-vew-sky" />
         <div>
@@ -1094,7 +1087,6 @@ function AnalyticsDashboard() {
         </div>
       </div>
 
-      {/* Stat Cards 2x2 grid */}
       <div className="grid grid-cols-2 gap-3">
         {statCards.map((card) => (
           <div
@@ -1136,7 +1128,6 @@ function AnalyticsDashboard() {
         </div>
       )}
 
-      {/* In-progress orders note */}
       {data && Number(data.inProgressOrders) > 0 && (
         <div className="bg-vew-sky-light/40 border border-vew-sky/20 rounded-xl p-3 flex items-center gap-2">
           <Loader2 className="w-4 h-4 text-vew-sky animate-spin flex-shrink-0" />
@@ -1165,7 +1156,6 @@ function DeliveryRemindersSection() {
   const sevenDaysLater = new Date(today);
   sevenDaysLater.setDate(today.getDate() + 7);
 
-  // Filter orders with delivery dates — overdue or within 7 days
   const upcomingOrders = orders.filter((o: Order) => {
     if (!o.deliveryDate || o.status === "delivered") return false;
     try {
@@ -1177,7 +1167,6 @@ function DeliveryRemindersSection() {
     }
   });
 
-  // Sort: overdue first, then by date
   upcomingOrders.sort((a: Order, b: Order) => {
     try {
       return (
@@ -1298,40 +1287,12 @@ function DeliveryRemindersSection() {
   );
 }
 
-// ─── Admin Session Loading Gate ───────────────────────────────────────────────
-// Shown after successful PIN login while the session is still initialising.
-// Prevents child components from calling mutations before config is ready.
-
-function AdminSessionLoadingGate() {
-  return (
-    <div
-      data-ocid="admin.session.loading_state"
-      className="flex-1 flex flex-col items-center justify-center gap-4 px-6 py-12"
-    >
-      <div className="w-14 h-14 rounded-2xl bg-vew-sky-light flex items-center justify-center">
-        <Loader2 className="w-7 h-7 text-vew-sky animate-spin" />
-      </div>
-      <div className="text-center">
-        <p className="text-sm font-semibold text-vew-navy">
-          Initialising Admin Panel
-        </p>
-        <p className="text-[11px] text-muted-foreground mt-1">
-          Loading configuration… · ಕಾನ್ಫಿಗರೇಶನ್ ಲೋಡ್ ಆಗುತ್ತಿದೆ…
-        </p>
-      </div>
-    </div>
-  );
-}
-
-// ─── Admin Screen (main) ──────────────────────────────────────────────────────
+// ─── Admin Screen (main export) ───────────────────────────────────────────────
 
 export function AdminScreen({ onBack }: { onBack: () => void }) {
   const { isLoggedIn, logout } = useAdminAuth();
-  // Local flag so the component re-renders immediately on successful login
-  // without waiting for a full sessionStorage round-trip.
   const [loggedInLocal, setLoggedInLocal] = useState(isLoggedIn);
 
-  // Zustand store — used to init the session once after login and track status
   const {
     status: sessionStatus,
     error: sessionError,
@@ -1347,13 +1308,8 @@ export function AdminScreen({ onBack }: { onBack: () => void }) {
   );
   const [searchQuery, setSearchQuery] = useState("");
 
-  // Kick off session init as soon as the user is logged in.
+  // Kick off session init as soon as the user logs in.
   // initSession() is idempotent — safe to call multiple times.
-  // This is the single point that triggers the sequential init:
-  //   1. bootstrapAdminToken() in main.tsx already captured the token
-  //   2. initSession() calls getAdminSession() → createActorWithConfig() (awaited)
-  //   3. Only after config resolves does the session become "ready"
-  //   4. The loading gate below prevents ANY dashboard render until status === "ready"
   useEffect(() => {
     if (loggedInLocal) {
       initSession().catch((e) =>
@@ -1372,14 +1328,13 @@ export function AdminScreen({ onBack }: { onBack: () => void }) {
   const deleteCustomerMutation = useDeleteCustomer();
 
   const designs = allDesignsQuery.data ?? [];
-
   const filteredDesigns = designs.filter(
     (d) =>
       d.designCode.toLowerCase().includes(searchQuery.toLowerCase()) ||
       d.category.toLowerCase().includes(searchQuery.toLowerCase()),
   );
 
-  // Not logged in → show PIN screen
+  // ── Not logged in → PIN screen ──────────────────────────────────────────────
   if (!loggedInLocal) {
     return (
       <div className="flex-1 flex flex-col">
@@ -1391,16 +1346,10 @@ export function AdminScreen({ onBack }: { onBack: () => void }) {
     );
   }
 
-  // Logged in but session still initialising OR failed → show loading/error gate.
-  //
-  // CRITICAL: Do NOT render the dashboard or any component that reads `config`
-  // (useCreateDesign, useAllDesigns, CloudinaryImageUploader, etc.) until
-  // sessionStatus === "ready". Rendering those components before
-  // createActorWithConfig() resolves causes:
-  //   "Cannot read properties of undefined (reading 'config')"
-  //
-  // The Zustand store sets status to "ready" only after initAdminSession()
-  // has successfully awaited createActorWithConfig().
+  // ── Logged in but session still initialising → loading gate ────────────────
+  // CRITICAL: Nothing that reads `config` (useCreateDesign, CloudinaryImageUploader,
+  // etc.) can render until sessionStatus === "ready". The loading gate here prevents
+  // the "Cannot read properties of undefined (reading 'config')" crash.
   if (sessionStatus === "idle" || sessionStatus === "loading") {
     return (
       <div className="flex-1 flex flex-col">
@@ -1409,9 +1358,7 @@ export function AdminScreen({ onBack }: { onBack: () => void }) {
     );
   }
 
-  // Session init threw — show the error clearly instead of crashing silently.
-  // The user can refresh or re-open the admin link to retry.
-  // sessionError is already destructured from the store above — no hook call here.
+  // ── Session init failed → clear error with back-to-login ───────────────────
   if (sessionStatus === "error") {
     return (
       <div className="flex-1 flex flex-col items-center justify-center gap-4 px-6 py-12">
@@ -1424,7 +1371,7 @@ export function AdminScreen({ onBack }: { onBack: () => void }) {
           </p>
           <p className="text-[11px] text-muted-foreground mt-1 leading-snug">
             The app configuration could not be loaded. Please open the app via
-            the Caffeine admin link and refresh the page.
+            your Caffeine admin link and refresh the page.
           </p>
           {sessionError && (
             <p className="text-[10px] text-red-500 mt-2 font-mono break-all bg-red-50 rounded-lg p-2">
@@ -1446,12 +1393,13 @@ export function AdminScreen({ onBack }: { onBack: () => void }) {
     );
   }
 
+  // ── Session ready — render full dashboard ──────────────────────────────────
+
   const handleSaveDesign = async (form: DesignFormData) => {
     if (!form.category) {
       toast.error("Category is required");
       return;
     }
-    // For new designs (not editing), require at least one image
     if (!editingDesign && form.imageUrls.length === 0) {
       toast.error(
         "Please upload at least one design image / ಕನಿಷ್ಠ ಒಂದು ಚಿತ್ರ ಅಪ್ಲೋಡ್ ಮಾಡಿ",
@@ -1484,13 +1432,11 @@ export function AdminScreen({ onBack }: { onBack: () => void }) {
           isTrending: form.isTrending,
         });
         toast.success(`Design added: ${assignedCode} / ಡಿಸೈನ್ ಸೇರಿಸಲಾಗಿದೆ`);
-        // Switch to the designs list so admin can immediately see the new entry
         setActiveTab("update_design");
       }
       setShowForm(false);
       setEditingDesign(null);
     } catch (err) {
-      console.error("Save design error:", err);
       const reason = err instanceof Error ? err.message : String(err);
       toast.error(`Failed to save design: ${reason}`);
     }
@@ -1532,7 +1478,6 @@ export function AdminScreen({ onBack }: { onBack: () => void }) {
     }
   };
 
-  // Show form panel when editing/adding
   if (showForm) {
     return (
       <div className="flex-1 flex flex-col">
@@ -1554,7 +1499,6 @@ export function AdminScreen({ onBack }: { onBack: () => void }) {
     );
   }
 
-  // 5-tab definitions for the admin panel (Analytics prepended)
   const ADMIN_TABS: Array<{ id: AdminTab; label: string; kannada: string }> = [
     { id: "analytics", label: "Analytics", kannada: "ವಿಶ್ಲೇಷಣೆ" },
     { id: "update_design", label: "Update Design", kannada: "ಡಿಸೈನ್ ಅಪ್ಡೇಟ್" },
@@ -1590,7 +1534,7 @@ export function AdminScreen({ onBack }: { onBack: () => void }) {
         </button>
       </div>
 
-      {/* 4 Tabs */}
+      {/* Tab bar */}
       <div className="flex border-b border-border/60 flex-shrink-0 overflow-x-auto">
         {ADMIN_TABS.map((tab) => (
           <button
@@ -1614,18 +1558,13 @@ export function AdminScreen({ onBack }: { onBack: () => void }) {
         ))}
       </div>
 
-      {/* Auth Status Banner — shows token health without needing DevTools */}
+      {/* Auth Status Banner */}
       <AuthStatusBanner />
-
-      {/* Canister Health Check Banner — warns if the backend is not responding */}
-      <CanisterHealthBanner />
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto">
-        {/* Analytics Tab */}
         {activeTab === "analytics" && <AnalyticsDashboard />}
 
-        {/* Update Design Tab — list, edit, delete designs */}
         {activeTab === "update_design" && (
           <div>
             <div className="px-4 pt-3 pb-2 flex gap-2">
@@ -1667,7 +1606,6 @@ export function AdminScreen({ onBack }: { onBack: () => void }) {
                     data-ocid={`admin.update_design.item.${idx + 1}`}
                     className="flex items-center gap-3 bg-white rounded-xl border border-border/60 shadow-xs px-3 py-2.5"
                   >
-                    {/* Thumbnail */}
                     <div className="w-12 h-12 rounded-lg overflow-hidden bg-vew-sky-light/40 flex-shrink-0 relative">
                       {design.imageUrls?.[0] ? (
                         <img
@@ -1682,7 +1620,6 @@ export function AdminScreen({ onBack }: { onBack: () => void }) {
                           </span>
                         </div>
                       )}
-                      {/* Multi-image badge */}
                       {(design.imageUrls?.length ?? 0) > 1 && (
                         <div className="absolute bottom-0 right-0 bg-vew-sky text-white text-[8px] font-bold px-1 rounded-tl-md">
                           {design.imageUrls.length}
@@ -1690,7 +1627,6 @@ export function AdminScreen({ onBack }: { onBack: () => void }) {
                       )}
                     </div>
 
-                    {/* Info */}
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-bold text-vew-navy truncate">
                         {design.designCode}
@@ -1726,7 +1662,6 @@ export function AdminScreen({ onBack }: { onBack: () => void }) {
                       </div>
                     </div>
 
-                    {/* Actions */}
                     <div className="flex items-center gap-1 flex-shrink-0">
                       <button
                         type="button"
@@ -1764,16 +1699,22 @@ export function AdminScreen({ onBack }: { onBack: () => void }) {
           </div>
         )}
 
-        {/* Design Upload Tab — single design upload form */}
-        {activeTab === "design_upload" && <SingleDesignUploadPanel />}
+        {/* Design Upload — wrapped in ConfigReadyBoundary */}
+        {activeTab === "design_upload" && (
+          <ConfigReadyBoundary>
+            <SingleDesignUploadPanel />
+          </ConfigReadyBoundary>
+        )}
 
-        {/* Bulk Upload Tab — bulk image upload */}
-        {activeTab === "bulk_upload" && <BulkUploadPanel />}
+        {/* Bulk Upload — wrapped in ConfigReadyBoundary */}
+        {activeTab === "bulk_upload" && (
+          <ConfigReadyBoundary>
+            <BulkUploadPanel />
+          </ConfigReadyBoundary>
+        )}
 
-        {/* Customer Tab */}
         {activeTab === "customer" && (
           <div>
-            {/* Delivery Reminders — shown above the customer list */}
             <DeliveryRemindersSection />
 
             <div className="px-4 pt-1 pb-2 border-t border-border/40">
@@ -1862,7 +1803,7 @@ export function AdminScreen({ onBack }: { onBack: () => void }) {
         )}
       </div>
 
-      {/* Delete Dialog */}
+      {/* Delete Design Confirmation Dialog */}
       <AlertDialog
         open={!!deleteDesignTarget}
         onOpenChange={(o) => !o && setDeleteDesignTarget(null)}

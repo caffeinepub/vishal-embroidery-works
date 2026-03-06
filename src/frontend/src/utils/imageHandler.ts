@@ -22,6 +22,7 @@
  * certificate request is made with admin credentials.
  */
 
+import type { HttpAgent } from "@icp-sdk/core/agent";
 import { loadConfig } from "../config";
 import { StorageClient } from "./StorageClient";
 import { getAdminSession } from "./adminActor";
@@ -274,7 +275,7 @@ export async function uploadImageFile(
     STORAGE_GATEWAY_URL,
     config.backend_canister_id,
     config.project_id,
-    session.agent, // ← authenticated agent, not anonymous
+    session.agent ?? ({} as HttpAgent), // ← authenticated agent (fallback to empty if unavailable)
   );
   console.info(
     `[AuthStatus] StorageClient created with authenticated agent → bucket: "${UPLOAD_BUCKET}"`,

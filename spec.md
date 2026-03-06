@@ -2,103 +2,53 @@
 
 ## Current State
 
-The admin panel has two image input flows:
+The Admin Panel has accumulated layers of retry logic, logging, and session state management across three interconnected files that are causing runtime crashes:
 
-1. **Design Upload tab (SingleDesignUploadPanel)** — `AdminScreen.tsx` lines 685–950  
-   - Contains up to 10 URL text input fields (`<Input>`) with small preview thumbnails  
-   - Admin pastes a direct image URL; valid `http`-starting strings are collected in `form.imageUrls`  
-   - An "Add another URL" dashed button adds more rows
+- `src/frontend/src/utils/adminActor.ts` — complex singleton session with 5-retry + slow-retry logic, heavy debug logging, verbose error paths; `isInitialized` mutable export
+- `src/frontend/src/store/adminSessionStore.ts` — Zustand store wrapping `adminActor.ts`, adds another async lifecycle layer
+- `src/frontend/src/hooks/useAdminAuth.ts` — PIN login hook using sessionStorage
+- `src/frontend/src/components/screens/AdminScreen.tsx` — 1900-line monolith importing all three above; has loading gate but session init errors still cause crashes
 
-2. **Bulk Upload tab (BulkUploadPanel)** — `AdminScreen.tsx` lines 954–1163  
-   - Admin pastes multiple URLs into a `<Textarea>` (one per line)  
-   - Valid `http`-starting lines are parsed and sent to `createDesignBulk`
-
-3. **Update Design tab (DesignFormPanel)** — edit flow in `AdminScreen.tsx` lines 332–625  
-   - Same URL input approach used for editing existing designs
-
-No file-upload system currently exists. `imageHandler.ts` and `useUploadImage.ts` contain a full Caffeine blob-storage upload pipeline but it is NOT wired to any UI.
-
-The gallery (`DesignCard.tsx`, `DesignGrid.tsx`) simply renders whatever URL is stored in `design.imageUrls[]` — it doesn't care where the URL came from.
+Root causes of the current corruption:
+1. `bootstrapAdminToken()` was never added to `main.tsx` despite being referenced everywhere — the token is NOT pre-captured before React renders
+2. `adminActor.ts` uses `createActorWithConfig()` which can return `undefined` if config is not ready; the retry loop adds complexity without fixing the root race
+3. `adminSessionStore.ts` adds a third layer of async state over an already fragile promise singleton
+4. Design Upload and Bulk Upload panels import hooks that call the actor immediately on mount, racing with the session init
 
 ## Requested Changes (Diff)
 
 ### Add
-
-- A new `cloudinaryUpload.ts` utility in `src/frontend/src/utils/` that:
-  - Uploads a `File` directly to Cloudinary via their unsigned upload API  
-  - Cloud Name: `doxbxqcef`  
-  - Upload Preset: `Embroidery_works`  
-  - Endpoint: `https://api.cloudinary.com/v1_1/doxbxqcef/image/upload`  
-  - Returns the `secure_url` from Cloudinary's JSON response  
-  - Handles upload progress via `XMLHttpRequest` for smooth mobile experience  
-  - Throws a descriptive error if upload fails
-
-- A `useCloudinaryUpload` hook in `src/frontend/src/hooks/` that wraps the utility with:
-  - Per-file progress state (0–100%)  
-  - Loading/error state  
-  - Retry logic for network errors (up to 2 retries)
-
-- A `CloudinaryImageUploader` reusable component that:
-  - Renders a tappable photo upload button (opens native file picker, accepts PNG/JPG/JPEG)  
-  - Shows upload progress bar per file  
-  - Shows thumbnail preview once uploaded  
-  - Shows a remove/replace button per uploaded image  
-  - Supports up to 10 images (for single design form) and displays count  
-  - Works well on mobile (large tap target, no hover-only UX)
+- `main.tsx` bootstrap: an IIFE that reads `caffeineAdminToken` from hash/query/sessionStorage and stores it in `sessionStorage` before `ReactDOM.createRoot` is called
+- Hardcoded `FALLBACK_CONFIG` object in `adminActor.ts` used when `createActorWithConfig()` fails, so the app always has safe default values
+- `AdminConfigContext` — a React context that holds the resolved config/session state and guards all child renders until ready
+- Loading boundary wrapper for Design Upload and Bulk Upload panels — they only mount after config context is confirmed ready
 
 ### Modify
-
-- **`SingleDesignUploadPanel`** (Design Upload tab):  
-  Replace the URL text inputs + "Add another URL" button with `CloudinaryImageUploader` (up to 10 images). After upload each image's Cloudinary `secure_url` is stored in `form.imageUrls`. All other fields (category, work type, trending, bridal toggles, save button, auto-code preview) remain unchanged.
-
-- **`BulkUploadPanel`** (Bulk Upload tab):  
-  Replace the URL textarea with a multi-file upload button that accepts up to 500 files at once from the phone gallery. Each selected file is uploaded to Cloudinary sequentially (with overall progress shown). After all uploads, the resulting `secure_url` values are used to call `createDesignBulk`. The category selector, auto-code generation, success/error banners, and save logic remain unchanged.
-
-- **`DesignFormPanel`** (Update Design / edit flow):  
-  Replace the URL text input rows with `CloudinaryImageUploader`. When editing, existing URLs are shown as pre-loaded thumbnail previews (not re-uploaded). The admin can add new images (uploaded to Cloudinary) or remove existing ones. All other edit fields remain unchanged.
+- `adminActor.ts` — complete rewrite: remove all retry/logging complexity; single clean async init; fallback config applied if actor creation fails; token read only after canister availability is confirmed
+- `useAdminAuth.ts` — simplify to pure PIN check with sessionStorage persistence (no changes to logic, just clean rewrite to remove any stale state)
+- `adminSessionStore.ts` — simplify to a minimal Zustand store: `idle | loading | ready | error` statuses, delegates entirely to the rewritten `adminActor.ts`
+- `AdminScreen.tsx` — rewrite session init to use `AdminConfigContext`; Design Upload and Bulk Upload wrapped in explicit loading boundary that checks context ready state before rendering
+- `main.tsx` — add token bootstrap IIFE before ReactDOM.createRoot
 
 ### Remove
-
-- URL text `<Input>` fields for image entry in `SingleDesignUploadPanel`  
-- URL `<Textarea>` in `BulkUploadPanel`  
-- URL text `<Input>` rows in `DesignFormPanel`  
-- `syncUrls` / `updateUrl` / `addUrlRow` / `removeUrlRow` helper functions (replaced by Cloudinary uploader state)
+- All `console.group` / verbose debug logging blocks from `adminActor.ts` (they bloat production bundles and obscure real errors)
+- The 5-retry + slow-retry loop in `adminActor.ts` (replaced by single attempt + fallback config)
+- `isInitialized` mutable module export (replaced by context/store state)
 
 ## Implementation Plan
 
-1. Create `src/frontend/src/utils/cloudinaryUpload.ts`  
-   - `uploadToCloudinary(file: File, onProgress?: (pct: number) => void): Promise<string>`  
-   - Uses `XMLHttpRequest` with `FormData` (better mobile progress than `fetch`)  
-   - Posts to `https://api.cloudinary.com/v1_1/doxbxqcef/image/upload`  
-   - Sends `upload_preset=Embroidery_works`  
-   - Returns `response.secure_url`  
-   - Validates: PNG/JPG/JPEG only, max 10 MB  
-
-2. Create `src/frontend/src/hooks/useCloudinaryUpload.ts`  
-   - State: `uploading: boolean`, `progress: number[]`, `error: string | null`  
-   - `uploadFiles(files: File[]): Promise<string[]>` — returns array of Cloudinary URLs  
-   - Retry up to 2 times on network error  
-
-3. Create `src/frontend/src/components/shared/CloudinaryImageUploader.tsx`  
-   - Props: `value: string[]`, `onChange: (urls: string[]) => void`, `maxImages?: number`, `disabled?: boolean`  
-   - Hidden `<input type="file" accept="image/png,image/jpeg,image/jpg" multiple>`  
-   - Visible upload button: camera/image icon + "Upload Photo" label  
-   - Per-image thumbnail with progress overlay while uploading  
-   - Remove button (×) on each thumbnail  
-   - Counter badge showing `n/maxImages`  
-   - Compact layout suitable for mobile  
-
-4. Update `SingleDesignUploadPanel` in `AdminScreen.tsx`  
-   - Replace URL input section with `<CloudinaryImageUploader value={form.imageUrls} onChange={...} maxImages={10} />`  
-   - Remove all URL sync helpers  
-
-5. Update `BulkUploadPanel` in `AdminScreen.tsx`  
-   - Replace textarea with a "Select Photos" file button (accepts multiple, up to 500)  
-   - Show selected count + overall upload progress  
-   - On save: upload all selected files to Cloudinary, then call `createDesignBulk` with resulting URLs  
-
-6. Update `DesignFormPanel` in `AdminScreen.tsx`  
-   - Replace URL input rows with `<CloudinaryImageUploader value={form.imageUrls} onChange={...} maxImages={10} />`  
-   - Existing URLs shown as pre-loaded thumbnails (no re-upload needed)  
-
-7. Validate with typecheck + lint + build
+1. Rewrite `main.tsx` to add the `bootstrapAdminToken()` IIFE before React renders — this is the single most important fix
+2. Rewrite `adminActor.ts` from scratch:
+   - Read token from sessionStorage only (bootstrap has already put it there)
+   - Single attempt to `createActorWithConfig()`; if it fails, use `FALLBACK_CONFIG` (hardcoded safe defaults)
+   - Call `_initializeAccessControlWithSecret(token)` only if canister is confirmed available
+   - Export `getAdminActor()`, `getAdminSession()`, `resetAdminActor()` with clean signatures
+3. Rewrite `useAdminAuth.ts` — keep identical PIN logic, remove stale imports
+4. Rewrite `adminSessionStore.ts` — minimal store, no extra logic beyond delegating to adminActor
+5. Rewrite `AdminScreen.tsx`:
+   - PIN login screen unchanged
+   - After login: show loading spinner while `initSession()` runs
+   - Design Upload and Bulk Upload tabs: wrapped in a `<ConfigReadyBoundary>` component that renders a spinner if session is not yet `ready`
+   - All existing 5 tabs (Analytics, Update Design, Design Upload, Bulk Upload, Customer) preserved
+   - All `data-ocid` markers preserved
+6. Validate (typecheck + build)
