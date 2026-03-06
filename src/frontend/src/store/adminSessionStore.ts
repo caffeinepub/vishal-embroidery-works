@@ -43,16 +43,48 @@ export const useAdminSessionStore = create<AdminSessionState>((set, get) => ({
     if (current === "loading" || current === "ready") return;
 
     set({ status: "loading", error: null });
+    console.info("[AdminSessionStore] Session init started…");
 
     try {
       const session = await getAdminSession();
       set({ status: "ready", session, error: null });
+
+      // ── Detailed session summary log ──────────────────────────────────────
+      // This is the single place where you can see EXACTLY what the canister
+      // delivered and whether the session is fully authenticated or anonymous.
+      console.group("[AdminSessionStore] ✓ Session ready — full summary");
+      console.info("isAnonymous:", session.isAnonymous);
       console.info(
-        `[AdminSessionStore] Session ready. isAnonymous=${session.isAnonymous}`,
+        "Auth level:",
+        session.isAnonymous
+          ? "⚠ ANONYMOUS — ICP writes will fail. Cloudinary uploads OK."
+          : "✓ AUTHENTICATED — all uploads and ICP saves authorised.",
       );
+      console.info(
+        "actor (available methods):",
+        Object.keys(session.actor as object)
+          .filter(
+            (k) =>
+              typeof (session.actor as unknown as Record<string, unknown>)[
+                k
+              ] === "function",
+          )
+          .slice(0, 20),
+      );
+      console.info(
+        "agent:",
+        session.agent
+          ? `Present (type=${typeof session.agent})`
+          : "⚠ agent is null/undefined — StorageClient will use anonymous agent.",
+      );
+      console.groupEnd();
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.error("[AdminSessionStore] Session init failed:", msg);
+      console.error("[AdminSessionStore] ✗ Session init failed:", {
+        message: msg,
+        raw: err,
+        hint: "Check the [AdminAuth] logs above for the exact failure point.",
+      });
       set({ status: "error", session: null, error: msg });
     }
   },

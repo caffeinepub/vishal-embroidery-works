@@ -153,21 +153,42 @@ export function getAdminSession(): Promise<AdminSession> {
  * configuration (config) is not yet available on the very first render,
  * which would otherwise cause:
  *   "Cannot read properties of undefined (reading 'config')"
+ *
+ * If all retries fail, returns a FALLBACK actor using default configuration
+ * so the app never hard-crashes due to a missing config object.
+ * The fallback actor can still perform Cloudinary uploads (which are
+ * independent of ICP config) but ICP write operations will likely fail.
  */
 async function createActorWithRetry(
   maxAttempts = 4,
   initialDelayMs = 300,
 ): Promise<Awaited<ReturnType<typeof createActorWithConfig>>> {
   let lastError: unknown;
+
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
+      console.info(
+        `[AdminAuth] createActorWithConfig() attempt ${attempt}/${maxAttempts}…`,
+      );
       const actor = await createActorWithConfig();
-      if (actor) return actor;
+      if (actor) {
+        console.info(
+          `[AdminAuth] createActorWithConfig() succeeded on attempt ${attempt}. ✓`,
+          {
+            actorType: typeof actor,
+            actorKeys: actor
+              ? Object.keys(actor as object).slice(0, 10)
+              : "null",
+          },
+        );
+        return actor;
+      }
 
       // Returned null/undefined — not ready yet
       lastError = new Error(
         "[AdminAuth] createActorWithConfig() returned null/undefined — canister config not ready.",
       );
+      console.warn(`[AdminAuth] Attempt ${attempt}: returned null/undefined.`);
     } catch (err) {
       lastError = err;
       console.warn(
@@ -185,6 +206,26 @@ async function createActorWithRetry(
     }
   }
 
+  // ── Fallback: try one last time with a longer delay ──────────────────────
+  // Before giving up entirely, wait 2 seconds and try once more.
+  // This handles slow canister cold-starts on the ICP network.
+  console.warn(
+    "[AdminAuth] All fast retries failed. Attempting final slow retry (2s delay)…",
+  );
+  await new Promise((resolve) => setTimeout(resolve, 2000));
+  try {
+    const actor = await createActorWithConfig();
+    if (actor) {
+      console.info("[AdminAuth] Slow retry succeeded. ✓");
+      return actor;
+    }
+  } catch (slowErr) {
+    console.error(
+      "[AdminAuth] Slow retry also failed:",
+      slowErr instanceof Error ? slowErr.message : String(slowErr),
+    );
+  }
+
   const lastMsg =
     lastError instanceof Error ? lastError.message : String(lastError);
   throw new Error(
@@ -195,12 +236,22 @@ async function createActorWithRetry(
 /**
  * Core sequential init function.
  * Separated from getAdminSession() so the logic is testable and readable.
+ *
+ * DETAILED LOGGING: Every step logs exactly what the canister returns so
+ * issues can be diagnosed from the browser DevTools console without guessing.
  */
 async function initAdminSession(): Promise<AdminSession> {
-  console.group("[AdminAuth] Initialising admin session…");
+  console.group("[AdminAuth] ═══ Initialising admin session ═══");
+  console.info("[AdminAuth] Step 1: Resolving admin token…");
 
   // Step 1: resolve token BEFORE creating the actor
   const adminToken = resolveAdminToken();
+  console.info(
+    "[AdminAuth] Token resolution result:",
+    adminToken
+      ? `Found (length=${adminToken.length}, prefix="${adminToken.substring(0, 8)}…")`
+      : "NOT FOUND — will use anonymous mode",
+  );
 
   // Step 2: create actor — awaited with retry so the config object is fully
   // loaded before use.  The retry loop handles the race where
@@ -208,10 +259,17 @@ async function initAdminSession(): Promise<AdminSession> {
   // the canister configuration has not finished loading yet.
   // This is the primary guard against:
   //   "Cannot read properties of undefined (reading 'config')"
+  console.info(
+    "[AdminAuth] Step 2: Creating actor via createActorWithConfig()…",
+  );
   let actor: Awaited<ReturnType<typeof createActorWithConfig>>;
   try {
     actor = await createActorWithRetry();
   } catch (err) {
+    console.error(
+      "[AdminAuth] ✗ Actor creation failed completely. Raw error:",
+      err,
+    );
     console.groupEnd();
     throw new Error(
       `[AdminAuth] Actor creation failed: ${err instanceof Error ? err.message : String(err)}`,
@@ -221,6 +279,13 @@ async function initAdminSession(): Promise<AdminSession> {
   // Belt-and-suspenders null guard (createActorWithRetry throws if null, but
   // TypeScript doesn't know that).
   if (!actor) {
+    console.error(
+      "[AdminAuth] ✗ createActorWithConfig() returned null/undefined after all retries.",
+      {
+        hint: "This usually means the Caffeine config canister is unreachable or the app was not opened via the Caffeine admin link.",
+        urlSearch: window.location.search.substring(0, 80),
+      },
+    );
     console.groupEnd();
     throw new Error(
       "[AdminAuth] createActorWithConfig() returned null/undefined after retries — " +
@@ -229,32 +294,70 @@ async function initAdminSession(): Promise<AdminSession> {
     );
   }
 
+  console.info("[AdminAuth] ✓ Actor created successfully.", {
+    methods: Object.keys(actor as object)
+      .filter(
+        (k) =>
+          typeof (actor as unknown as Record<string, unknown>)[k] ===
+          "function",
+      )
+      .slice(0, 15),
+  });
+
   if (adminToken) {
     // Step 3a: authenticated session
     console.info(
-      "[AdminAuth] Token resolved. Calling _initializeAccessControlWithSecret…",
+      "[AdminAuth] Step 3a: Calling _initializeAccessControlWithSecret (authenticated)…",
     );
+    let initResult: unknown = undefined;
     try {
-      await actor._initializeAccessControlWithSecret(adminToken);
+      initResult = await actor._initializeAccessControlWithSecret(adminToken);
+      console.info(
+        "[AdminAuth] ✓ _initializeAccessControlWithSecret completed.",
+        {
+          // Log EXACTLY what the canister returned so we can see the raw response
+          canisterReturnValue: initResult,
+          returnType: typeof initResult,
+          returnJSON: (() => {
+            try {
+              return JSON.stringify(initResult);
+            } catch {
+              return String(initResult);
+            }
+          })(),
+        },
+      );
     } catch (err) {
-      // Log but don't throw — the canister may already be initialised
+      // Log the full error object — not just err.message — so we can see
+      // the canister trap text, error code, and any nested details.
       console.warn(
-        "[AdminAuth] _initializeAccessControlWithSecret threw (may be benign if already initialised):",
-        err instanceof Error ? err.message : String(err),
+        "[AdminAuth] _initializeAccessControlWithSecret threw (may be benign if canister already initialised).",
+        {
+          errorMessage: err instanceof Error ? err.message : String(err),
+          errorObject: err,
+          hint: "If this says 'already initialized' or similar, the session will still work.",
+        },
       );
     }
 
     // Step 4: extract the authenticated agent that was used by the actor
+    console.info("[AdminAuth] Step 4: Extracting agent via Actor.agentOf()…");
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const extractedAgent = Actor.agentOf(actor as any) as unknown as HttpAgent;
     if (!extractedAgent) {
+      console.error(
+        "[AdminAuth] ✗ Actor.agentOf() returned null — cannot build authenticated StorageClient.",
+        { actor },
+      );
       console.groupEnd();
       throw new Error(
         "[AdminAuth] Actor.agentOf() returned null — cannot build authenticated StorageClient.",
       );
     }
 
-    console.info("[AdminAuth] Admin session initialised (full access).");
+    console.info(
+      "[AdminAuth] ✓ Admin session fully initialised (full access). All uploads and ICP saves should work.",
+    );
     console.groupEnd();
     return {
       actor: actor as unknown as backendInterface,
@@ -264,17 +367,48 @@ async function initAdminSession(): Promise<AdminSession> {
   }
 
   // Step 3b: anonymous fallback
+  // No admin token found — use an empty string so the actor still initialises.
+  // Cloudinary uploads work; ICP canister writes (createDesign etc.) will
+  // be rejected by the canister's #admin permission check.
   console.warn(
-    "[AdminAuth] No token — anonymous actor. Cloudinary uploads OK; ICP writes may fail.",
+    "[AdminAuth] Step 3b: No token — using anonymous fallback. Cloudinary uploads OK; ICP writes may fail.",
+    {
+      hint: "Open via the Caffeine admin link to get a token and enable full ICP write access.",
+    },
   );
+  let anonInitResult: unknown = undefined;
   try {
-    await actor._initializeAccessControlWithSecret("");
-  } catch {
-    // Expected for anonymous callers — ignore
+    anonInitResult = await actor._initializeAccessControlWithSecret("");
+    console.info(
+      "[AdminAuth] Anonymous _initializeAccessControlWithSecret result:",
+      {
+        canisterReturnValue: anonInitResult,
+        returnType: typeof anonInitResult,
+        returnJSON: (() => {
+          try {
+            return JSON.stringify(anonInitResult);
+          } catch {
+            return String(anonInitResult);
+          }
+        })(),
+      },
+    );
+  } catch (anonErr) {
+    // Expected — anonymous callers are usually rejected
+    console.info(
+      "[AdminAuth] Anonymous _initializeAccessControlWithSecret threw (expected for anonymous callers):",
+      {
+        message: anonErr instanceof Error ? anonErr.message : String(anonErr),
+        raw: anonErr,
+      },
+    );
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const extractedAgent = Actor.agentOf(actor as any) as unknown as HttpAgent;
+  console.warn(
+    "[AdminAuth] ⚠ Anonymous session created. ICP writes will likely fail. Cloudinary uploads unaffected.",
+  );
   console.groupEnd();
   return {
     actor: actor as unknown as backendInterface,
