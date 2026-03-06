@@ -198,7 +198,7 @@ export default function App() {
           </main>
         )}
 
-        {!showSplash && activeTab !== "admin" && (
+        {!showSplash && (
           <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] bg-white border-t border-border/60 shadow-nav z-40 pb-safe">
             <div className="flex items-stretch">
               {NAV_ITEMS.map((item) => {

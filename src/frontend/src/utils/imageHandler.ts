@@ -233,16 +233,30 @@ export async function uploadImageFile(
   const compressedSize = compressed.size;
 
   // 3. Get admin session (actor + authenticated agent — initialized once)
+  // ── Authentication Status Log ──────────────────────────────────────────────
+  // Open your browser DevTools → Console to see these logs in real time.
+  // They will show exactly whether the token was found and where it came from.
+  console.group(`[AuthStatus] Upload starting for "${file.name}"`);
+  console.info("[AuthStatus] Checking admin session…");
+
   let session: Awaited<ReturnType<typeof getAdminSession>>;
   try {
     session = await getAdminSession();
-  } catch (initErr) {
-    console.error(
-      `[ImageHandler] Admin session init failed for "${file.name}":`,
-      initErr,
+    console.info(
+      "[AuthStatus] ✅ Admin session OK — authenticated agent attached to StorageClient.",
     );
+  } catch (initErr) {
+    const reason = initErr instanceof Error ? initErr.message : String(initErr);
+    console.error(
+      "[AuthStatus] ❌ UNAUTHORIZED — admin session failed to initialise.",
+      "\nReason:",
+      reason,
+      "\nDiagnosis: The caffeineAdminToken could not be found in the URL or sessionStorage.",
+      "\nFix: Refresh the page using the original Caffeine admin link that contains the token in the URL.",
+    );
+    console.groupEnd();
     throw new ImageUploadError(
-      "Upload failed: could not authenticate. Please refresh the page and log in again.",
+      `Upload failed: could not authenticate. ${reason}`,
       "AUTH_ERROR",
       file.name,
     );
@@ -250,6 +264,9 @@ export async function uploadImageFile(
 
   // 4. Load config for project/canister IDs
   const config = await loadConfig();
+  console.info(
+    `[AuthStatus] Config loaded — canister: ${config.backend_canister_id}, project: ${config.project_id}`,
+  );
 
   // 5. Create StorageClient using the admin-authenticated agent
   const storageClient = new StorageClient(
@@ -257,18 +274,25 @@ export async function uploadImageFile(
     STORAGE_GATEWAY_URL,
     config.backend_canister_id,
     config.project_id,
-    session.agent, // ← the fix: authenticated agent, not anonymous
+    session.agent, // ← authenticated agent, not anonymous
+  );
+  console.info(
+    `[AuthStatus] StorageClient created with authenticated agent → bucket: "${UPLOAD_BUCKET}"`,
   );
 
   // 6. Upload
   try {
+    console.info(
+      `[AuthStatus] Sending "${file.name}" (${(compressedSize / 1024).toFixed(0)} KB) to blob storage…`,
+    );
     const bytes = new Uint8Array(await compressed.arrayBuffer());
     const { hash } = await storageClient.putFile(bytes, onProgress);
     const url = await storageClient.getDirectURL(hash);
 
     console.info(
-      `[ImageHandler] Uploaded "${file.name}" → ${url.substring(0, 80)}...`,
+      `[AuthStatus] ✅ Upload SUCCESS for "${file.name}" → ${url.substring(0, 80)}...`,
     );
+    console.groupEnd();
 
     return {
       url,
@@ -281,7 +305,12 @@ export async function uploadImageFile(
     // (e.g. canister trap text, HTTP status details, token errors).
     const fullMsg = err instanceof Error ? err.message : String(err);
     const msg = fullMsg.toLowerCase();
-    console.error(`[ImageHandler] Upload failed for "${file.name}":`, err);
+    console.error(
+      `[AuthStatus] ❌ Upload FAILED for "${file.name}":`,
+      "\nError:",
+      fullMsg,
+    );
+    console.groupEnd();
 
     if (
       msg.includes("admin token not found") ||
