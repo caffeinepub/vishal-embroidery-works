@@ -1334,6 +1334,7 @@ export function AdminScreen({ onBack }: { onBack: () => void }) {
   // Zustand store — used to init the session once after login and track status
   const {
     status: sessionStatus,
+    error: sessionError,
     initSession,
     clearSession,
   } = useAdminSessionStore();
@@ -1410,8 +1411,8 @@ export function AdminScreen({ onBack }: { onBack: () => void }) {
 
   // Session init threw — show the error clearly instead of crashing silently.
   // The user can refresh or re-open the admin link to retry.
+  // sessionError is already destructured from the store above — no hook call here.
   if (sessionStatus === "error") {
-    const { error: sessionError } = useAdminSessionStore.getState();
     return (
       <div className="flex-1 flex flex-col items-center justify-center gap-4 px-6 py-12">
         <div className="w-14 h-14 rounded-2xl bg-red-50 flex items-center justify-center">

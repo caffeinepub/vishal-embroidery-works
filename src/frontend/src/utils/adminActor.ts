@@ -148,6 +148,51 @@ export function getAdminSession(): Promise<AdminSession> {
 }
 
 /**
+ * Attempt createActorWithConfig() up to maxAttempts times with an exponential
+ * back-off delay between retries.  This handles the race where the canister
+ * configuration (config) is not yet available on the very first render,
+ * which would otherwise cause:
+ *   "Cannot read properties of undefined (reading 'config')"
+ */
+async function createActorWithRetry(
+  maxAttempts = 4,
+  initialDelayMs = 300,
+): Promise<Awaited<ReturnType<typeof createActorWithConfig>>> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const actor = await createActorWithConfig();
+      if (actor) return actor;
+
+      // Returned null/undefined — not ready yet
+      lastError = new Error(
+        "[AdminAuth] createActorWithConfig() returned null/undefined — canister config not ready.",
+      );
+    } catch (err) {
+      lastError = err;
+      console.warn(
+        `[AdminAuth] createActorWithConfig() attempt ${attempt}/${maxAttempts} threw:`,
+        err instanceof Error ? err.message : String(err),
+      );
+    }
+
+    if (attempt < maxAttempts) {
+      const delay = initialDelayMs * 2 ** (attempt - 1); // 300, 600, 1200 ms
+      console.info(
+        `[AdminAuth] Retrying createActorWithConfig() in ${delay}ms (attempt ${attempt + 1}/${maxAttempts})…`,
+      );
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+
+  const lastMsg =
+    lastError instanceof Error ? lastError.message : String(lastError);
+  throw new Error(
+    `[AdminAuth] createActorWithConfig() failed after all retries — the canister configuration (config) could not be loaded. Open the app via the Caffeine admin link and refresh the page. Last error: ${lastMsg}`,
+  );
+}
+
+/**
  * Core sequential init function.
  * Separated from getAdminSession() so the logic is testable and readable.
  */
@@ -157,31 +202,30 @@ async function initAdminSession(): Promise<AdminSession> {
   // Step 1: resolve token BEFORE creating the actor
   const adminToken = resolveAdminToken();
 
-  // Step 2: create actor — awaited so the config object is fully loaded
-  // createActorWithConfig() can return undefined/null on misconfiguration,
-  // so we guard immediately to avoid the "Cannot read properties of undefined
-  // (reading 'config')" crash that happens when downstream code calls actor.config.
+  // Step 2: create actor — awaited with retry so the config object is fully
+  // loaded before use.  The retry loop handles the race where
+  // createActorWithConfig() returns null on the very first render because
+  // the canister configuration has not finished loading yet.
+  // This is the primary guard against:
+  //   "Cannot read properties of undefined (reading 'config')"
   let actor: Awaited<ReturnType<typeof createActorWithConfig>>;
   try {
-    actor = await createActorWithConfig();
+    actor = await createActorWithRetry();
   } catch (err) {
     console.groupEnd();
     throw new Error(
-      `[AdminAuth] createActorWithConfig() threw: ${err instanceof Error ? err.message : String(err)}`,
+      `[AdminAuth] Actor creation failed: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
 
-  // Guard against the "Cannot read properties of undefined (reading 'config')"
-  // crash. This happens when createActorWithConfig() returns null/undefined
-  // because the canister configuration has not loaded yet. By throwing here
-  // with a readable message we ensure no downstream code tries to read .config
-  // on an undefined value.
+  // Belt-and-suspenders null guard (createActorWithRetry throws if null, but
+  // TypeScript doesn't know that).
   if (!actor) {
     console.groupEnd();
     throw new Error(
-      "[AdminAuth] createActorWithConfig() returned null/undefined — the canister " +
-        "configuration (config) is not available yet. The app will retry automatically. " +
-        "If this persists, open the app via the Caffeine admin link and refresh the page.",
+      "[AdminAuth] createActorWithConfig() returned null/undefined after retries — " +
+        "the canister configuration (config) is not available. " +
+        "Open the app via the Caffeine admin link and refresh the page.",
     );
   }
 

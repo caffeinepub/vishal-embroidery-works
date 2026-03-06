@@ -13,30 +13,31 @@ declare global {
     toJSON(): string;
   }
 }
-
 /**
- * Token Bootstrap — runs BEFORE React renders.
+ * bootstrapAdminToken — runs BEFORE React renders.
  *
- * The `caffeineAdminToken` is injected once by Caffeine into the page URL
- * (?caffeineAdminToken=... or #caffeineAdminToken=...). After any redirect
- * (e.g. OAuth, page refresh) the URL is clean and the token is gone.
+ * The `caffeineAdminToken` is injected into the URL by Caffeine on the very
+ * first admin page load.  Any navigation or OAuth redirect replaces the URL
+ * with a clean one that no longer has the token.  We must capture it into
+ * sessionStorage at the earliest possible moment — before ReactDOM.createRoot()
+ * — so that adminActor.ts can read it after any redirect.
  *
- * This IIFE captures the token from the URL at the earliest possible moment
- * and persists it in sessionStorage so adminActor.ts can find it later,
- * even after OAuth redirects have stripped it from the URL.
- *
- * Must run synchronously before ReactDOM.createRoot() — do NOT move it.
+ * Without this, every page load after a redirect finds no token, causing:
+ *   • createActorWithConfig() to return without config
+ *   • "Cannot read properties of undefined (reading 'config')" crash
+ *   • "Authentication Status: Unauthorized" banner
+ *   • All uploads and design saves to fail
  */
 (function bootstrapAdminToken() {
   const TOKEN_KEY = "vew_caffeine_admin_token";
   try {
-    // 1. Already in sessionStorage — nothing to do
+    // 1. Already stored from a previous load — nothing to do
     if (sessionStorage.getItem(TOKEN_KEY)) {
       console.info("[TokenBootstrap] Token already in sessionStorage.");
       return;
     }
 
-    // 2. URL query string  (?caffeineAdminToken=...)
+    // 2. URL query string: ?caffeineAdminToken=...  (primary Caffeine injection point)
     const qs = new URLSearchParams(window.location.search);
     const fromQuery = qs.get("caffeineAdminToken");
     if (fromQuery) {
@@ -45,21 +46,19 @@ declare global {
       return;
     }
 
-    // 3. URL hash fragment  (#caffeineAdminToken=... or #/route?caffeineAdminToken=...)
+    // 3. URL hash fragment: #caffeineAdminToken=...  (alternative injection)
     const hash = window.location.hash;
     if (hash && hash.length > 1) {
       const hashContent = hash.substring(1);
-
-      // Plain hash: #caffeineAdminToken=xxx
-      const plainHash = new URLSearchParams(hashContent);
-      const fromPlainHash = plainHash.get("caffeineAdminToken");
-      if (fromPlainHash) {
-        sessionStorage.setItem(TOKEN_KEY, fromPlainHash);
+      // Try plain hash params first: #caffeineAdminToken=...
+      const hashParams = new URLSearchParams(hashContent);
+      const fromHash = hashParams.get("caffeineAdminToken");
+      if (fromHash) {
+        sessionStorage.setItem(TOKEN_KEY, fromHash);
         console.info("[TokenBootstrap] Token captured from URL hash.");
         return;
       }
-
-      // Hash with embedded query string: #/route?caffeineAdminToken=xxx
+      // Also try hash + query string: #/path?caffeineAdminToken=...
       const qIdx = hashContent.indexOf("?");
       if (qIdx !== -1) {
         const hashQs = new URLSearchParams(hashContent.substring(qIdx + 1));
@@ -74,12 +73,12 @@ declare global {
       }
     }
 
-    console.warn(
-      "[TokenBootstrap] caffeineAdminToken not found in URL or sessionStorage. " +
-        "Open the app via the Caffeine admin link to restore full access.",
+    console.info(
+      "[TokenBootstrap] Token not found in URL — anonymous mode. " +
+        "Open the app via the Caffeine admin link to enable full admin access.",
     );
   } catch (e) {
-    // sessionStorage may be blocked in some private-browsing modes — safe to ignore
+    // sessionStorage blocked (private browsing) — fall through gracefully
     console.warn("[TokenBootstrap] Could not access sessionStorage:", e);
   }
 })();
