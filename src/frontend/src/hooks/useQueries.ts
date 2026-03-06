@@ -261,11 +261,13 @@ export function useCreateMeasurement() {
       name: string;
       phone: string;
       bust: string;
+      chest: string;
       waist: string;
       shoulder: string;
       sleeveLength: string;
       neck: string;
       blouseLength: string;
+      notes: string;
     }) => {
       // Always use the admin actor so createMeasurement has correct permissions
       const actor = await getAdminActor();
@@ -273,11 +275,13 @@ export function useCreateMeasurement() {
         args.name,
         args.phone,
         args.bust,
+        args.chest,
         args.waist,
         args.shoulder,
         args.sleeveLength,
         args.neck,
         args.blouseLength,
+        args.notes,
       );
     },
     onSuccess: () => {
@@ -294,11 +298,13 @@ export function useUpdateMeasurement() {
       name: string;
       phone: string;
       bust: string;
+      chest: string;
       waist: string;
       shoulder: string;
       sleeveLength: string;
       neck: string;
       blouseLength: string;
+      notes: string;
     }) => {
       const actor = await createAdminActor();
       await actor.updateMeasurement(
@@ -306,11 +312,13 @@ export function useUpdateMeasurement() {
         args.name,
         args.phone,
         args.bust,
+        args.chest,
         args.waist,
         args.shoulder,
         args.sleeveLength,
         args.neck,
         args.blouseLength,
+        args.notes,
       );
     },
     onSuccess: () => {
@@ -463,7 +471,9 @@ export function useCreateOrder() {
       customerId: bigint;
       workType: string;
       designCode: string;
+      stitchingType: string;
       deliveryDate: string;
+      orderDate: string;
       status: import("../backend.d").OrderStatus;
     }) => {
       const actor = await createAdminActor();
@@ -471,7 +481,9 @@ export function useCreateOrder() {
         args.customerId,
         args.workType,
         args.designCode,
+        args.stitchingType,
         args.deliveryDate,
+        args.orderDate,
         args.status,
       );
     },
@@ -492,14 +504,18 @@ export function useUpdateOrder() {
       customerId: bigint;
       workType: string;
       designCode: string;
+      stitchingType: string;
       deliveryDate: string;
+      orderDate: string;
     }) => {
       const actor = await createAdminActor();
       await actor.updateOrder(
         args.id,
         args.workType,
         args.designCode,
+        args.stitchingType,
         args.deliveryDate,
+        args.orderDate,
       );
     },
     onSuccess: (_data, vars) => {
@@ -558,5 +574,16 @@ export function useIsAdmin() {
       return actor.isCallerAdmin();
     },
     enabled: !!actor && !isFetching,
+  });
+}
+
+export function useGetAnalytics() {
+  return useQuery({
+    queryKey: ["analytics"],
+    queryFn: async () => {
+      const actor = await createAdminActor();
+      return actor.getAnalytics();
+    },
+    staleTime: 30_000,
   });
 }

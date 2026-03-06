@@ -1,17 +1,18 @@
 import { Toaster } from "@/components/ui/sonner";
-import { Heart, Home, Scissors, Sparkles } from "lucide-react";
+import { Heart, Home, Scissors, Sparkles, Users } from "lucide-react";
 import { useState } from "react";
 import type { Design } from "./backend.d";
 
 import { AdminScreen } from "./components/screens/AdminScreen";
 import { BlouseScreen } from "./components/screens/BlouseScreen";
+import { CustomersScreen } from "./components/screens/CustomersScreen";
 import { EmbroideryScreen } from "./components/screens/EmbroideryScreen";
 import { FavouriteScreen } from "./components/screens/FavouriteScreen";
 import { HomeScreen } from "./components/screens/HomeScreen";
 import { SplashScreen } from "./components/screens/SplashScreen";
 import { DesignDetailModal } from "./components/shared/DesignDetailModal";
 
-type Tab = "home" | "embroidery" | "blouse" | "favourite";
+type Tab = "home" | "embroidery" | "blouse" | "favourite" | "customers";
 
 const NAV_ITEMS: {
   id: Tab;
@@ -43,6 +44,12 @@ const NAV_ITEMS: {
     kannada: "ಮೆಚ್ಚಿನ",
     icon: <Heart className="w-5 h-5" />,
   },
+  {
+    id: "customers",
+    label: "Customers",
+    kannada: "ಗ್ರಾಹಕರು",
+    icon: <Users className="w-5 h-5" />,
+  },
 ];
 
 export default function App() {
@@ -67,6 +74,7 @@ export default function App() {
     embroidery: { en: "Embroidery", kn: "ಕಸೂತಿ" },
     blouse: { en: "Blouse", kn: "ಬ್ಲೌಸ್" },
     favourite: { en: "Favourites", kn: "ಮೆಚ್ಚಿನವು" },
+    customers: { en: "Customers", kn: "ಗ್ರಾಹಕರು" },
   };
 
   const showHeader = activeTab !== "home";
@@ -174,6 +182,7 @@ export default function App() {
             {activeTab === "favourite" && (
               <FavouriteScreen onDesignClick={handleDesignClick} />
             )}
+            {activeTab === "customers" && <CustomersScreen />}
           </main>
         )}
 

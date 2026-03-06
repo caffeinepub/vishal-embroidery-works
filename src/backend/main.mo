@@ -9,10 +9,10 @@ import Order "mo:core/Order";
 import Time "mo:core/Time";
 import Principal "mo:core/Principal";
 
-
 import MixinStorage "blob-storage/Mixin";
 import MixinAuthorization "authorization/MixinAuthorization";
 import AccessControl "authorization/access-control";
+
 
 
 actor {
@@ -35,11 +35,13 @@ actor {
     name : Text;
     phone : Text;
     bust : Text;
+    chest : Text;
     waist : Text;
     shoulder : Text;
     sleeveLength : Text;
     neck : Text;
     blouseLength : Text;
+    notes : Text;
     createdAt : Time.Time;
   };
 
@@ -79,7 +81,9 @@ actor {
     customerId : Nat;
     workType : Text;
     designCode : Text;
+    stitchingType : Text;
     deliveryDate : Text;
+    orderDate : Text;
     status : OrderStatus;
     createdAt : Time.Time;
   };
@@ -393,7 +397,6 @@ actor {
 
   // === Customer Management ===
 
-  // (admin only for all except createCustomer which needs user role)
   public shared ({ caller }) func createCustomer(
     name : Text,
     phone : Text,
@@ -406,8 +409,8 @@ actor {
     frontNeck : Text,
     backNeck : Text,
   ) : async () {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can create customers");
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
+      Runtime.trap("Unauthorized: Only admins can create customers");
     };
 
     let newCustomer : Customer = {
@@ -498,7 +501,9 @@ actor {
     customerId : Nat,
     workType : Text,
     designCode : Text,
+    stitchingType : Text,
     deliveryDate : Text,
+    orderDate : Text,
     status : OrderStatus,
   ) : async () {
     if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
@@ -510,7 +515,9 @@ actor {
       customerId;
       workType;
       designCode;
+      stitchingType;
       deliveryDate;
+      orderDate;
       status;
       createdAt = Time.now();
     };
@@ -523,7 +530,9 @@ actor {
     id : Nat,
     workType : Text,
     designCode : Text,
+    stitchingType : Text,
     deliveryDate : Text,
+    orderDate : Text,
   ) : async () {
     if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
       Runtime.trap("Unauthorized: Only admins can update orders");
@@ -532,11 +541,13 @@ actor {
       case (null) { Runtime.trap("Order not found") };
       case (?existing) {
         let updated : Order = {
-          id = existing.id;
+          id;
           customerId = existing.customerId;
           workType;
           designCode;
+          stitchingType;
           deliveryDate;
+          orderDate;
           status = existing.status;
           createdAt = existing.createdAt;
         };
@@ -553,11 +564,13 @@ actor {
       case (null) { Runtime.trap("Order not found") };
       case (?existing) {
         let updated : Order = {
-          id = existing.id;
+          id;
           customerId = existing.customerId;
           workType = existing.workType;
           designCode = existing.designCode;
+          stitchingType = existing.stitchingType;
           deliveryDate = existing.deliveryDate;
+          orderDate = existing.orderDate;
           status;
           createdAt = existing.createdAt;
         };
@@ -596,25 +609,29 @@ actor {
     name : Text,
     phone : Text,
     bust : Text,
+    chest : Text,
     waist : Text,
     shoulder : Text,
     sleeveLength : Text,
     neck : Text,
     blouseLength : Text,
+    notes : Text,
   ) : async () {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can submit measurements");
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
+      Runtime.trap("Unauthorized: Only admins can submit measurements");
     };
     let measurement : Measurement = {
       id = nextMeasurementId;
       name;
       phone;
       bust;
+      chest;
       waist;
       shoulder;
       sleeveLength;
       neck;
       blouseLength;
+      notes;
       createdAt = Time.now();
     };
     measurements.add(nextMeasurementId, measurement);
@@ -626,11 +643,13 @@ actor {
     name : Text,
     phone : Text,
     bust : Text,
+    chest : Text,
     waist : Text,
     shoulder : Text,
     sleeveLength : Text,
     neck : Text,
     blouseLength : Text,
+    notes : Text,
   ) : async () {
     if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
       Runtime.trap("Unauthorized: Only admins can update measurements");
@@ -639,15 +658,17 @@ actor {
       case (null) { Runtime.trap("Measurement does not exist") };
       case (?existing) {
         let updated : Measurement = {
-          id = existing.id;
+          id;
           name;
           phone;
           bust;
+          chest;
           waist;
           shoulder;
           sleeveLength;
           neck;
           blouseLength;
+          notes;
           createdAt = existing.createdAt;
         };
         measurements.add(id, updated);
@@ -675,5 +696,44 @@ actor {
       Runtime.trap("Unauthorized: Only admins can view measurements");
     };
     measurements.get(id);
+  };
+
+  public query ({ caller }) func getAnalytics() : async {
+    totalDesigns : Nat;
+    totalCustomers : Nat;
+    pendingOrders : Nat;
+    inProgressOrders : Nat;
+    completedOrders : Nat;
+  } {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
+      Runtime.trap("Unauthorized: Only admins can view analytics");
+    };
+    {
+      totalDesigns = designs.size();
+      totalCustomers = customers.size();
+      pendingOrders = countOrdersByStatus(#pending);
+      inProgressOrders = countOrdersByStatus(#inStitching);
+      completedOrders = countOrdersByStatus(#delivered);
+    };
+  };
+
+  func countOrdersByStatus(status : OrderStatus) : Nat {
+    var count = 0;
+    for (order in orders.values()) {
+      if (equalOrderStatus(order.status, status)) {
+        count += 1;
+      };
+    };
+    count;
+  };
+
+  func equalOrderStatus(a : OrderStatus, b : OrderStatus) : Bool {
+    switch (a, b) {
+      case (#pending, #pending) { true };
+      case (#inStitching, #inStitching) { true };
+      case (#ready, #ready) { true };
+      case (#delivered, #delivered) { true };
+      case (_, _) { false };
+    };
   };
 };

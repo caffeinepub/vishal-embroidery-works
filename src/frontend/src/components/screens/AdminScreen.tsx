@@ -24,7 +24,10 @@ import { Switch } from "@/components/ui/switch";
 import {
   AlertCircle,
   ArrowLeft,
+  BarChart3,
+  CheckCircle,
   CheckCircle2,
+  Clock,
   Edit2,
   Eye,
   EyeOff,
@@ -37,22 +40,27 @@ import {
   Plus,
   Search,
   Shield,
+  Sparkles,
   Trash2,
+  TrendingUp,
   Upload,
   User,
+  Users,
   X,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import type { Customer, Design } from "../../backend.d";
+import type { Customer, Design, Order } from "../../backend.d";
 import { useAdminAuth } from "../../hooks/useAdminAuth";
 import {
   useAllCustomers,
   useAllDesigns,
+  useAllOrders,
   useCreateDesign,
   useCreateDesignBulk,
   useDeleteCustomer,
   useDeleteDesign,
+  useGetAnalytics,
   useGetNextDesignCode,
   useSetBridal,
   useSetTrending,
@@ -72,7 +80,12 @@ const CATEGORIES = [
   "Fashion Blouse",
 ];
 
-type AdminTab = "update_design" | "design_upload" | "bulk_upload" | "customer";
+type AdminTab =
+  | "analytics"
+  | "update_design"
+  | "design_upload"
+  | "bulk_upload"
+  | "customer";
 
 interface DesignFormData {
   category: string;
@@ -1796,6 +1809,268 @@ function BulkUploadPanel() {
   );
 }
 
+// ─── Analytics Dashboard ──────────────────────────────────────────────────────
+
+function AnalyticsDashboard() {
+  const analyticsQuery = useGetAnalytics();
+  const data = analyticsQuery.data;
+
+  const statCards = [
+    {
+      label: "Total Designs",
+      kannada: "ಒಟ್ಟು ಡಿಸೈನ್‌ಗಳು",
+      value: data ? Number(data.totalDesigns) : null,
+      icon: <Sparkles className="w-5 h-5 text-blue-500" />,
+      bg: "bg-blue-50",
+      border: "border-blue-100",
+      valueColor: "text-blue-700",
+    },
+    {
+      label: "Total Customers",
+      kannada: "ಒಟ್ಟು ಗ್ರಾಹಕರು",
+      value: data ? Number(data.totalCustomers) : null,
+      icon: <Users className="w-5 h-5 text-green-500" />,
+      bg: "bg-green-50",
+      border: "border-green-100",
+      valueColor: "text-green-700",
+    },
+    {
+      label: "Pending Orders",
+      kannada: "ಬಾಕಿ ಆದೇಶಗಳು",
+      value: data ? Number(data.pendingOrders) : null,
+      icon: <Clock className="w-5 h-5 text-yellow-500" />,
+      bg: "bg-yellow-50",
+      border: "border-yellow-100",
+      valueColor: "text-yellow-700",
+    },
+    {
+      label: "Completed Orders",
+      kannada: "ಪೂರ್ಣಗೊಂಡ ಆದೇಶಗಳು",
+      value: data ? Number(data.completedOrders) : null,
+      icon: <CheckCircle className="w-5 h-5 text-purple-500" />,
+      bg: "bg-purple-50",
+      border: "border-purple-100",
+      valueColor: "text-purple-700",
+    },
+  ];
+
+  return (
+    <div className="px-4 py-4 space-y-4">
+      {/* Title */}
+      <div className="flex items-center gap-2">
+        <BarChart3 className="w-5 h-5 text-vew-sky" />
+        <div>
+          <h3 className="text-sm font-bold text-vew-navy">
+            Analytics Dashboard
+          </h3>
+          <p className="text-[10px] text-vew-sky">ವಿಶ್ಲೇಷಣೆ</p>
+        </div>
+      </div>
+
+      {/* Stat Cards 2x2 grid */}
+      <div className="grid grid-cols-2 gap-3">
+        {statCards.map((card) => (
+          <div
+            key={card.label}
+            className={`${card.bg} ${card.border} border rounded-2xl p-4 flex flex-col gap-2`}
+          >
+            <div className="flex items-center justify-between">
+              {card.icon}
+              <TrendingUp className="w-3 h-3 text-muted-foreground/40" />
+            </div>
+            {analyticsQuery.isLoading ? (
+              <div className="h-7 w-12 bg-current/10 rounded-lg animate-pulse" />
+            ) : (
+              <p className={`text-2xl font-extrabold ${card.valueColor}`}>
+                {card.value ?? "—"}
+              </p>
+            )}
+            <div>
+              <p className="text-xs font-semibold text-foreground/80">
+                {card.label}
+              </p>
+              <p className="text-[9px] text-muted-foreground leading-tight">
+                {card.kannada}
+              </p>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {analyticsQuery.isError && (
+        <div
+          data-ocid="admin.analytics.error_state"
+          className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl p-3"
+        >
+          <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
+          <p className="text-xs text-red-700">
+            Failed to load analytics. Try again later.
+          </p>
+        </div>
+      )}
+
+      {/* In-progress orders note */}
+      {data && Number(data.inProgressOrders) > 0 && (
+        <div className="bg-vew-sky-light/40 border border-vew-sky/20 rounded-xl p-3 flex items-center gap-2">
+          <Loader2 className="w-4 h-4 text-vew-sky animate-spin flex-shrink-0" />
+          <p className="text-xs text-vew-sky font-medium">
+            {Number(data.inProgressOrders)} order
+            {Number(data.inProgressOrders) !== 1 ? "s" : ""} currently in
+            stitching
+            <span className="block text-[9px] text-vew-sky/70">ಹೊಲಿಗೆ ಹಂತದಲ್ಲಿ</span>
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Delivery Reminders Section ───────────────────────────────────────────────
+
+function DeliveryRemindersSection() {
+  const ordersQuery = useAllOrders();
+  const customersQuery = useAllCustomers();
+  const orders = ordersQuery.data ?? [];
+  const customers = customersQuery.data ?? [];
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const sevenDaysLater = new Date(today);
+  sevenDaysLater.setDate(today.getDate() + 7);
+
+  // Filter orders with delivery dates — overdue or within 7 days
+  const upcomingOrders = orders.filter((o: Order) => {
+    if (!o.deliveryDate || o.status === "delivered") return false;
+    try {
+      const d = new Date(o.deliveryDate);
+      d.setHours(0, 0, 0, 0);
+      return d <= sevenDaysLater;
+    } catch {
+      return false;
+    }
+  });
+
+  // Sort: overdue first, then by date
+  upcomingOrders.sort((a: Order, b: Order) => {
+    try {
+      return (
+        new Date(a.deliveryDate).getTime() - new Date(b.deliveryDate).getTime()
+      );
+    } catch {
+      return 0;
+    }
+  });
+
+  const getCustomerName = (customerId: bigint) => {
+    const c = customers.find(
+      (cu: Customer) => cu.id.toString() === customerId.toString(),
+    );
+    return c?.name ?? "Unknown";
+  };
+
+  const isOverdue = (dateStr: string) => {
+    try {
+      const d = new Date(dateStr);
+      d.setHours(0, 0, 0, 0);
+      return d < today;
+    } catch {
+      return false;
+    }
+  };
+
+  const formatDate = (dateStr: string) => {
+    try {
+      return new Date(dateStr).toLocaleDateString("en-IN", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      });
+    } catch {
+      return dateStr;
+    }
+  };
+
+  return (
+    <div className="px-4 pt-3 pb-2">
+      <div className="flex items-center gap-2 mb-3">
+        <Clock className="w-4 h-4 text-amber-500" />
+        <div>
+          <p className="text-xs font-bold text-vew-navy">Delivery Reminders</p>
+          <p className="text-[9px] text-amber-600">ಡೆಲಿವರಿ ನೆನಪು</p>
+        </div>
+      </div>
+
+      {ordersQuery.isLoading ? (
+        <div className="space-y-2">
+          {Array.from({ length: 2 }).map((_, i) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: skeleton
+            <Skeleton key={i} className="h-14 rounded-xl" />
+          ))}
+        </div>
+      ) : upcomingOrders.length === 0 ? (
+        <div className="bg-green-50 border border-green-200 rounded-xl p-3 flex items-center gap-2">
+          <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0" />
+          <p className="text-xs text-green-700">
+            No upcoming deliveries / ಯಾವುದೇ ಡೆಲಿವರಿ ಇಲ್ಲ
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {upcomingOrders.map((order: Order, idx: number) => {
+            const overdue = isOverdue(order.deliveryDate);
+            return (
+              <div
+                key={order.id.toString()}
+                data-ocid={`admin.delivery.item.${idx + 1}`}
+                className={`rounded-xl border px-3 py-2.5 flex items-center gap-3 ${
+                  overdue
+                    ? "bg-red-50 border-red-200"
+                    : "bg-amber-50 border-amber-200"
+                }`}
+              >
+                <div
+                  className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+                    overdue ? "bg-red-100" : "bg-amber-100"
+                  }`}
+                >
+                  <Clock
+                    className={`w-4 h-4 ${overdue ? "text-red-500" : "text-amber-500"}`}
+                  />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p
+                    className={`text-xs font-semibold truncate ${overdue ? "text-red-800" : "text-amber-800"}`}
+                  >
+                    {getCustomerName(order.customerId)}
+                  </p>
+                  <p
+                    className={`text-[10px] truncate ${overdue ? "text-red-600" : "text-amber-600"}`}
+                  >
+                    {order.workType}
+                    {order.designCode ? ` · ${order.designCode}` : ""}
+                  </p>
+                </div>
+                <div className="text-right flex-shrink-0">
+                  <p
+                    className={`text-[10px] font-semibold ${overdue ? "text-red-700" : "text-amber-700"}`}
+                  >
+                    {overdue ? "⚠ Overdue" : formatDate(order.deliveryDate)}
+                  </p>
+                  {overdue && (
+                    <p className="text-[9px] text-red-500">
+                      {formatDate(order.deliveryDate)}
+                    </p>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Admin Screen (main) ──────────────────────────────────────────────────────
 
 export function AdminScreen({ onBack }: { onBack: () => void }) {
@@ -1805,7 +2080,7 @@ export function AdminScreen({ onBack }: { onBack: () => void }) {
   // without waiting for a full sessionStorage round-trip.
   const [loggedInLocal, setLoggedInLocal] = useState(isLoggedIn);
 
-  const [activeTab, setActiveTab] = useState<AdminTab>("update_design");
+  const [activeTab, setActiveTab] = useState<AdminTab>("analytics");
   const [showForm, setShowForm] = useState(false);
   const [editingDesign, setEditingDesign] = useState<Design | null>(null);
   const [deleteDesignTarget, setDeleteDesignTarget] = useState<Design | null>(
@@ -1955,8 +2230,9 @@ export function AdminScreen({ onBack }: { onBack: () => void }) {
     );
   }
 
-  // 4-tab definitions for the admin panel
+  // 5-tab definitions for the admin panel (Analytics prepended)
   const ADMIN_TABS: Array<{ id: AdminTab; label: string; kannada: string }> = [
+    { id: "analytics", label: "Analytics", kannada: "ವಿಶ್ಲೇಷಣೆ" },
     { id: "update_design", label: "Update Design", kannada: "ಡಿಸೈನ್ ಅಪ್ಡೇಟ್" },
     { id: "design_upload", label: "Design Upload", kannada: "ಡಿಸೈನ್ ಅಪ್ಲೋಡ್" },
     { id: "bulk_upload", label: "Bulk Upload", kannada: "ಬಲ್ಕ್ ಅಪ್ಲೋಡ್" },
@@ -2025,6 +2301,9 @@ export function AdminScreen({ onBack }: { onBack: () => void }) {
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto">
+        {/* Analytics Tab */}
+        {activeTab === "analytics" && <AnalyticsDashboard />}
+
         {/* Update Design Tab — list, edit, delete designs */}
         {activeTab === "update_design" && (
           <div>
@@ -2173,7 +2452,10 @@ export function AdminScreen({ onBack }: { onBack: () => void }) {
         {/* Customer Tab */}
         {activeTab === "customer" && (
           <div>
-            <div className="px-4 pt-3 pb-2">
+            {/* Delivery Reminders — shown above the customer list */}
+            <DeliveryRemindersSection />
+
+            <div className="px-4 pt-1 pb-2 border-t border-border/40">
               <p className="text-xs text-muted-foreground">
                 {(customersQuery.data ?? []).length} customer
                 {(customersQuery.data ?? []).length !== 1 ? "s" : ""} registered

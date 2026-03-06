@@ -74,7 +74,9 @@ interface CustomerFormData {
 interface OrderFormData {
   workType: string;
   designCode: string;
+  stitchingType: string;
   deliveryDate: string;
+  orderDate: string;
   status: OrderStatus;
 }
 
@@ -94,7 +96,9 @@ const emptyCustomerForm: CustomerFormData = {
 const emptyOrderForm: OrderFormData = {
   workType: "",
   designCode: "",
+  stitchingType: "",
   deliveryDate: "",
+  orderDate: "",
   status: "pending" as OrderStatus,
 };
 
@@ -390,7 +394,9 @@ function OrderFormDialog({
       ? {
           workType: editingOrder.workType,
           designCode: editingOrder.designCode,
+          stitchingType: editingOrder.stitchingType ?? "",
           deliveryDate: editingOrder.deliveryDate,
+          orderDate: editingOrder.orderDate ?? "",
           status: editingOrder.status,
         }
       : emptyOrderForm,
@@ -407,7 +413,9 @@ function OrderFormDialog({
           ? {
               workType: editingOrder.workType,
               designCode: editingOrder.designCode,
+              stitchingType: editingOrder.stitchingType ?? "",
               deliveryDate: editingOrder.deliveryDate,
+              orderDate: editingOrder.orderDate ?? "",
               status: editingOrder.status,
             }
           : emptyOrderForm,
@@ -428,7 +436,9 @@ function OrderFormDialog({
           customerId,
           workType: form.workType,
           designCode: form.designCode,
+          stitchingType: form.stitchingType,
           deliveryDate: form.deliveryDate,
+          orderDate: form.orderDate,
         });
         toast.success("Order updated / ಆದೇಶ ನವೀಕರಿಸಲಾಗಿದೆ");
       } else {
@@ -436,7 +446,9 @@ function OrderFormDialog({
           customerId,
           workType: form.workType,
           designCode: form.designCode,
+          stitchingType: form.stitchingType,
           deliveryDate: form.deliveryDate,
+          orderDate: form.orderDate,
           status: form.status,
         });
         toast.success("Order added / ಆದೇಶ ಸೇರಿಸಲಾಗಿದೆ");
@@ -480,6 +492,21 @@ function OrderFormDialog({
 
           <div>
             <Label className="text-[11px] mb-1.5 block">
+              Stitching Type / ಹೊಲಿಗೆ ವಿಧ
+            </Label>
+            <Input
+              data-ocid="order.form.stitchingtype.input"
+              value={form.stitchingType}
+              onChange={(e) =>
+                setForm((p) => ({ ...p, stitchingType: e.target.value }))
+              }
+              placeholder="e.g. Blouse Stitching, Embroidery"
+              className="h-10 text-sm rounded-xl"
+            />
+          </div>
+
+          <div>
+            <Label className="text-[11px] mb-1.5 block">
               Design Code / ಡಿಸೈನ್ ಕೋಡ್
             </Label>
             <Input
@@ -490,6 +517,21 @@ function OrderFormDialog({
               }
               placeholder="e.g. VEW-AE-001"
               className="h-10 text-sm rounded-xl font-mono"
+            />
+          </div>
+
+          <div>
+            <Label className="text-[11px] mb-1.5 block">
+              Order Date / ಆದೇಶ ದಿನಾಂಕ
+            </Label>
+            <Input
+              data-ocid="order.form.orderdate.input"
+              type="date"
+              value={form.orderDate}
+              onChange={(e) =>
+                setForm((p) => ({ ...p, orderDate: e.target.value }))
+              }
+              className="h-10 text-sm rounded-xl"
             />
           </div>
 
@@ -642,8 +684,48 @@ function CustomerDetailView({
     },
   ];
 
-  const whatsappUrl = `https://wa.me/91${customer.phone.replace(/\D/g, "")}`;
   const telUrl = `tel:${customer.phone}`;
+
+  const buildWhatsAppMessage = (cust: Customer, orderList: Order[]) => {
+    const lines = [
+      "*Vishal Embroidery Works*",
+      `Customer: ${cust.name}`,
+      `Phone: ${cust.phone}`,
+      cust.address ? `Address: ${cust.address}` : null,
+      "",
+      "*Measurements:*",
+      cust.bust ? `Bust: ${cust.bust}"` : null,
+      cust.waist ? `Waist: ${cust.waist}"` : null,
+      cust.shoulder ? `Shoulder: ${cust.shoulder}"` : null,
+      cust.sleeveLength ? `Sleeve: ${cust.sleeveLength}"` : null,
+      cust.blouseLength ? `Blouse Length: ${cust.blouseLength}"` : null,
+      cust.frontNeck ? `Front Neck: ${cust.frontNeck}"` : null,
+      cust.backNeck ? `Back Neck: ${cust.backNeck}"` : null,
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    const orderLines =
+      orderList.length > 0
+        ? [
+            "",
+            `*Orders (${orderList.length}):*`,
+            ...orderList.map((o, i) => {
+              const parts = [`${i + 1}. ${o.workType}`];
+              if (o.designCode) parts.push(`Code: ${o.designCode}`);
+              if (o.stitchingType) parts.push(`Type: ${o.stitchingType}`);
+              if (o.deliveryDate)
+                parts.push(`Delivery: ${formatDate(o.deliveryDate)}`);
+              parts.push(`Status: ${statusLabel(o.status)}`);
+              return parts.join(" | ");
+            }),
+          ].join("\n")
+        : "";
+
+    return encodeURIComponent(lines + orderLines);
+  };
+
+  const whatsappUrl = `https://wa.me/91${customer.phone.replace(/\D/g, "")}?text=${buildWhatsAppMessage(customer, orders)}`;
 
   return (
     <div className="flex-1 flex flex-col">
@@ -801,6 +883,11 @@ function CustomerDetailView({
                         )}
                       </div>
 
+                      {order.stitchingType && (
+                        <p className="text-[10px] text-muted-foreground mb-0.5">
+                          {order.stitchingType}
+                        </p>
+                      )}
                       {order.deliveryDate && (
                         <div className="flex items-center gap-1 text-[10px] text-muted-foreground mb-1.5">
                           <Calendar className="w-3 h-3" />

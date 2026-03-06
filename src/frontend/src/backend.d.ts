@@ -41,11 +41,13 @@ export interface Measurement {
     id: bigint;
     blouseLength: string;
     bust: string;
+    chest: string;
     name: string;
     neck: string;
     createdAt: Time;
     sleeveLength: string;
     shoulder: string;
+    notes: string;
     phone: string;
     waist: string;
 }
@@ -55,6 +57,8 @@ export interface Order {
     workType: string;
     createdAt: Time;
     deliveryDate: string;
+    orderDate: string;
+    stitchingType: string;
     customerId: bigint;
     designCode: string;
 }
@@ -79,8 +83,8 @@ export interface backendInterface {
     createDesign(designCode: string, category: string, workType: string, imageUrls: Array<string>, isBridal: boolean, isTrending: boolean): Promise<void>;
     createDesignBulk(entries: Array<BulkCreateEntry>): Promise<bigint>;
     createDesignWithAutoCode(category: string, workType: string, imageUrls: Array<string>, isBridal: boolean, isTrending: boolean): Promise<string>;
-    createMeasurement(name: string, phone: string, bust: string, waist: string, shoulder: string, sleeveLength: string, neck: string, blouseLength: string): Promise<void>;
-    createOrder(customerId: bigint, workType: string, designCode: string, deliveryDate: string, status: OrderStatus): Promise<void>;
+    createMeasurement(name: string, phone: string, bust: string, chest: string, waist: string, shoulder: string, sleeveLength: string, neck: string, blouseLength: string, notes: string): Promise<void>;
+    createOrder(customerId: bigint, workType: string, designCode: string, stitchingType: string, deliveryDate: string, orderDate: string, status: OrderStatus): Promise<void>;
     deleteCustomer(id: bigint): Promise<void>;
     deleteDesign(id: bigint): Promise<void>;
     deleteMeasurement(id: bigint): Promise<void>;
@@ -89,6 +93,13 @@ export interface backendInterface {
     getAllDesigns(): Promise<Array<Design>>;
     getAllMeasurements(): Promise<Array<Measurement>>;
     getAllOrders(): Promise<Array<Order>>;
+    getAnalytics(): Promise<{
+        pendingOrders: bigint;
+        completedOrders: bigint;
+        inProgressOrders: bigint;
+        totalDesigns: bigint;
+        totalCustomers: bigint;
+    }>;
     getBridalDesigns(): Promise<Array<Design>>;
     getCallerUserProfile(): Promise<UserProfile | null>;
     getCallerUserRole(): Promise<UserRole>;
@@ -106,7 +117,7 @@ export interface backendInterface {
     setTrending(id: bigint, flag: boolean): Promise<void>;
     updateCustomer(id: bigint, name: string, phone: string, address: string, bust: string, waist: string, shoulder: string, sleeveLength: string, blouseLength: string, frontNeck: string, backNeck: string): Promise<void>;
     updateDesign(id: bigint, designCode: string, category: string, workType: string, imageUrls: Array<string>): Promise<void>;
-    updateMeasurement(id: bigint, name: string, phone: string, bust: string, waist: string, shoulder: string, sleeveLength: string, neck: string, blouseLength: string): Promise<void>;
-    updateOrder(id: bigint, workType: string, designCode: string, deliveryDate: string): Promise<void>;
+    updateMeasurement(id: bigint, name: string, phone: string, bust: string, chest: string, waist: string, shoulder: string, sleeveLength: string, neck: string, blouseLength: string, notes: string): Promise<void>;
+    updateOrder(id: bigint, workType: string, designCode: string, stitchingType: string, deliveryDate: string, orderDate: string): Promise<void>;
     updateOrderStatus(id: bigint, status: OrderStatus): Promise<void>;
 }

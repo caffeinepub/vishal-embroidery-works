@@ -40,11 +40,13 @@ export interface Measurement {
   'id' : bigint,
   'blouseLength' : string,
   'bust' : string,
+  'chest' : string,
   'name' : string,
   'neck' : string,
   'createdAt' : Time,
   'sleeveLength' : string,
   'shoulder' : string,
+  'notes' : string,
   'phone' : string,
   'waist' : string,
 }
@@ -54,6 +56,8 @@ export interface Order {
   'workType' : string,
   'createdAt' : Time,
   'deliveryDate' : string,
+  'orderDate' : string,
+  'stitchingType' : string,
   'customerId' : bigint,
   'designCode' : string,
 }
@@ -121,11 +125,22 @@ export interface _SERVICE {
     string
   >,
   'createMeasurement' : ActorMethod<
-    [string, string, string, string, string, string, string, string],
+    [
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+    ],
     undefined
   >,
   'createOrder' : ActorMethod<
-    [bigint, string, string, string, OrderStatus],
+    [bigint, string, string, string, string, string, OrderStatus],
     undefined
   >,
   'deleteCustomer' : ActorMethod<[bigint], undefined>,
@@ -136,6 +151,16 @@ export interface _SERVICE {
   'getAllDesigns' : ActorMethod<[], Array<Design>>,
   'getAllMeasurements' : ActorMethod<[], Array<Measurement>>,
   'getAllOrders' : ActorMethod<[], Array<Order>>,
+  'getAnalytics' : ActorMethod<
+    [],
+    {
+      'pendingOrders' : bigint,
+      'completedOrders' : bigint,
+      'inProgressOrders' : bigint,
+      'totalDesigns' : bigint,
+      'totalCustomers' : bigint,
+    }
+  >,
   'getBridalDesigns' : ActorMethod<[], Array<Design>>,
   'getCallerUserProfile' : ActorMethod<[], [] | [UserProfile]>,
   'getCallerUserRole' : ActorMethod<[], UserRole>,
@@ -172,10 +197,25 @@ export interface _SERVICE {
     undefined
   >,
   'updateMeasurement' : ActorMethod<
-    [bigint, string, string, string, string, string, string, string, string],
+    [
+      bigint,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+      string,
+    ],
     undefined
   >,
-  'updateOrder' : ActorMethod<[bigint, string, string, string], undefined>,
+  'updateOrder' : ActorMethod<
+    [bigint, string, string, string, string, string],
+    undefined
+  >,
   'updateOrderStatus' : ActorMethod<[bigint, OrderStatus], undefined>,
 }
 export declare const idlService: IDL.ServiceClass;

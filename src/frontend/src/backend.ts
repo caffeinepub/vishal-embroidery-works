@@ -123,11 +123,13 @@ export interface Measurement {
     id: bigint;
     blouseLength: string;
     bust: string;
+    chest: string;
     name: string;
     neck: string;
     createdAt: Time;
     sleeveLength: string;
     shoulder: string;
+    notes: string;
     phone: string;
     waist: string;
 }
@@ -144,6 +146,8 @@ export interface Order {
     workType: string;
     createdAt: Time;
     deliveryDate: string;
+    orderDate: string;
+    stitchingType: string;
     customerId: bigint;
     designCode: string;
 }
@@ -179,8 +183,8 @@ export interface backendInterface {
     createDesign(designCode: string, category: string, workType: string, imageUrls: Array<string>, isBridal: boolean, isTrending: boolean): Promise<void>;
     createDesignBulk(entries: Array<BulkCreateEntry>): Promise<bigint>;
     createDesignWithAutoCode(category: string, workType: string, imageUrls: Array<string>, isBridal: boolean, isTrending: boolean): Promise<string>;
-    createMeasurement(name: string, phone: string, bust: string, waist: string, shoulder: string, sleeveLength: string, neck: string, blouseLength: string): Promise<void>;
-    createOrder(customerId: bigint, workType: string, designCode: string, deliveryDate: string, status: OrderStatus): Promise<void>;
+    createMeasurement(name: string, phone: string, bust: string, chest: string, waist: string, shoulder: string, sleeveLength: string, neck: string, blouseLength: string, notes: string): Promise<void>;
+    createOrder(customerId: bigint, workType: string, designCode: string, stitchingType: string, deliveryDate: string, orderDate: string, status: OrderStatus): Promise<void>;
     deleteCustomer(id: bigint): Promise<void>;
     deleteDesign(id: bigint): Promise<void>;
     deleteMeasurement(id: bigint): Promise<void>;
@@ -189,6 +193,13 @@ export interface backendInterface {
     getAllDesigns(): Promise<Array<Design>>;
     getAllMeasurements(): Promise<Array<Measurement>>;
     getAllOrders(): Promise<Array<Order>>;
+    getAnalytics(): Promise<{
+        pendingOrders: bigint;
+        completedOrders: bigint;
+        inProgressOrders: bigint;
+        totalDesigns: bigint;
+        totalCustomers: bigint;
+    }>;
     getBridalDesigns(): Promise<Array<Design>>;
     getCallerUserProfile(): Promise<UserProfile | null>;
     getCallerUserRole(): Promise<UserRole>;
@@ -206,8 +217,8 @@ export interface backendInterface {
     setTrending(id: bigint, flag: boolean): Promise<void>;
     updateCustomer(id: bigint, name: string, phone: string, address: string, bust: string, waist: string, shoulder: string, sleeveLength: string, blouseLength: string, frontNeck: string, backNeck: string): Promise<void>;
     updateDesign(id: bigint, designCode: string, category: string, workType: string, imageUrls: Array<string>): Promise<void>;
-    updateMeasurement(id: bigint, name: string, phone: string, bust: string, waist: string, shoulder: string, sleeveLength: string, neck: string, blouseLength: string): Promise<void>;
-    updateOrder(id: bigint, workType: string, designCode: string, deliveryDate: string): Promise<void>;
+    updateMeasurement(id: bigint, name: string, phone: string, bust: string, chest: string, waist: string, shoulder: string, sleeveLength: string, neck: string, blouseLength: string, notes: string): Promise<void>;
+    updateOrder(id: bigint, workType: string, designCode: string, stitchingType: string, deliveryDate: string, orderDate: string): Promise<void>;
     updateOrderStatus(id: bigint, status: OrderStatus): Promise<void>;
 }
 import type { Customer as _Customer, Design as _Design, Measurement as _Measurement, Order as _Order, OrderStatus as _OrderStatus, Time as _Time, UserProfile as _UserProfile, UserRole as _UserRole, _CaffeineStorageRefillInformation as __CaffeineStorageRefillInformation, _CaffeineStorageRefillResult as __CaffeineStorageRefillResult } from "./declarations/backend.did.d.ts";
@@ -395,31 +406,31 @@ export class Backend implements backendInterface {
             return result;
         }
     }
-    async createMeasurement(arg0: string, arg1: string, arg2: string, arg3: string, arg4: string, arg5: string, arg6: string, arg7: string): Promise<void> {
+    async createMeasurement(arg0: string, arg1: string, arg2: string, arg3: string, arg4: string, arg5: string, arg6: string, arg7: string, arg8: string, arg9: string): Promise<void> {
         if (this.processError) {
             try {
-                const result = await this.actor.createMeasurement(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7);
+                const result = await this.actor.createMeasurement(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9);
                 return result;
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
-            const result = await this.actor.createMeasurement(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7);
+            const result = await this.actor.createMeasurement(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9);
             return result;
         }
     }
-    async createOrder(arg0: bigint, arg1: string, arg2: string, arg3: string, arg4: OrderStatus): Promise<void> {
+    async createOrder(arg0: bigint, arg1: string, arg2: string, arg3: string, arg4: string, arg5: string, arg6: OrderStatus): Promise<void> {
         if (this.processError) {
             try {
-                const result = await this.actor.createOrder(arg0, arg1, arg2, arg3, to_candid_OrderStatus_n10(this._uploadFile, this._downloadFile, arg4));
+                const result = await this.actor.createOrder(arg0, arg1, arg2, arg3, arg4, arg5, to_candid_OrderStatus_n10(this._uploadFile, this._downloadFile, arg6));
                 return result;
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
-            const result = await this.actor.createOrder(arg0, arg1, arg2, arg3, to_candid_OrderStatus_n10(this._uploadFile, this._downloadFile, arg4));
+            const result = await this.actor.createOrder(arg0, arg1, arg2, arg3, arg4, arg5, to_candid_OrderStatus_n10(this._uploadFile, this._downloadFile, arg6));
             return result;
         }
     }
@@ -533,6 +544,26 @@ export class Backend implements backendInterface {
         } else {
             const result = await this.actor.getAllOrders();
             return from_candid_vec_n12(this._uploadFile, this._downloadFile, result);
+        }
+    }
+    async getAnalytics(): Promise<{
+        pendingOrders: bigint;
+        completedOrders: bigint;
+        inProgressOrders: bigint;
+        totalDesigns: bigint;
+        totalCustomers: bigint;
+    }> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getAnalytics();
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getAnalytics();
+            return result;
         }
     }
     async getBridalDesigns(): Promise<Array<Design>> {
@@ -773,31 +804,31 @@ export class Backend implements backendInterface {
             return result;
         }
     }
-    async updateMeasurement(arg0: bigint, arg1: string, arg2: string, arg3: string, arg4: string, arg5: string, arg6: string, arg7: string, arg8: string): Promise<void> {
+    async updateMeasurement(arg0: bigint, arg1: string, arg2: string, arg3: string, arg4: string, arg5: string, arg6: string, arg7: string, arg8: string, arg9: string, arg10: string): Promise<void> {
         if (this.processError) {
             try {
-                const result = await this.actor.updateMeasurement(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8);
+                const result = await this.actor.updateMeasurement(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10);
                 return result;
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
-            const result = await this.actor.updateMeasurement(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8);
+            const result = await this.actor.updateMeasurement(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10);
             return result;
         }
     }
-    async updateOrder(arg0: bigint, arg1: string, arg2: string, arg3: string): Promise<void> {
+    async updateOrder(arg0: bigint, arg1: string, arg2: string, arg3: string, arg4: string, arg5: string): Promise<void> {
         if (this.processError) {
             try {
-                const result = await this.actor.updateOrder(arg0, arg1, arg2, arg3);
+                const result = await this.actor.updateOrder(arg0, arg1, arg2, arg3, arg4, arg5);
                 return result;
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
-            const result = await this.actor.updateOrder(arg0, arg1, arg2, arg3);
+            const result = await this.actor.updateOrder(arg0, arg1, arg2, arg3, arg4, arg5);
             return result;
         }
     }
@@ -852,6 +883,8 @@ function from_candid_record_n14(_uploadFile: (file: ExternalBlob) => Promise<Uin
     workType: string;
     createdAt: _Time;
     deliveryDate: string;
+    orderDate: string;
+    stitchingType: string;
     customerId: bigint;
     designCode: string;
 }): {
@@ -860,6 +893,8 @@ function from_candid_record_n14(_uploadFile: (file: ExternalBlob) => Promise<Uin
     workType: string;
     createdAt: Time;
     deliveryDate: string;
+    orderDate: string;
+    stitchingType: string;
     customerId: bigint;
     designCode: string;
 } {
@@ -869,6 +904,8 @@ function from_candid_record_n14(_uploadFile: (file: ExternalBlob) => Promise<Uin
         workType: value.workType,
         createdAt: value.createdAt,
         deliveryDate: value.deliveryDate,
+        orderDate: value.orderDate,
+        stitchingType: value.stitchingType,
         customerId: value.customerId,
         designCode: value.designCode
     };

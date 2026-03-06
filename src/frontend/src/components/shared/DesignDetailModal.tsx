@@ -445,11 +445,13 @@ export function DesignDetailModal({
         name: bookName,
         phone: bookPhone,
         bust: bookBust,
+        chest: "",
         waist: bookWaist,
         shoulder: bookShoulder,
         sleeveLength: bookSleeve,
         neck: bookNeck,
         blouseLength: bookBlouseLength,
+        notes: "",
       });
       toast.success("Booking confirmed! / ಬುಕಿಂಗ್ ದೃಢಪಡಿಸಲಾಗಿದೆ!");
       setBookingOpen(false);
