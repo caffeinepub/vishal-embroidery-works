@@ -31,7 +31,6 @@ import {
   Flame,
   Heart,
   ImagePlus,
-  Layers,
   Loader2,
   Lock,
   LogOut,
@@ -73,7 +72,7 @@ const CATEGORIES = [
   "Fashion Blouse",
 ];
 
-type AdminTab = "designs" | "upload" | "customers";
+type AdminTab = "update_design" | "design_upload" | "bulk_upload" | "customer";
 
 interface DesignFormData {
   category: string;
@@ -120,7 +119,7 @@ declare global {
 
 // Google OAuth Client ID for Vishal Embroidery Works Admin Panel
 const GOOGLE_CLIENT_ID =
-  "1002480004594-gvas36ut7eloj28h9738htb3ec1p0oud.apps.googleusercontent.com";
+  "1002480004594-1h58q9aikcgelgeae3gl28pijm9uj5sl.apps.googleusercontent.com";
 
 // ─── Auth Status Banner ───────────────────────────────────────────────────────
 // Shows a real-time indicator of whether the admin session token is ready.
@@ -281,21 +280,30 @@ function AdminLogin({
 
   const initializeGoogle = () => {
     if (!window.google?.accounts?.id) return;
-    window.google.accounts.id.initialize({
-      client_id: GOOGLE_CLIENT_ID,
-      callback: handleGoogleCredential,
-      auto_select: false,
-      cancel_on_tap_outside: true,
-    });
-    // Render the hidden Google button (used as fallback for the OAuth popup)
-    if (googleButtonRef.current) {
-      window.google.accounts.id.renderButton(googleButtonRef.current, {
-        theme: "outline",
-        size: "large",
-        width: "100%",
-        text: "continue_with",
-        shape: "rectangular",
+    try {
+      window.google.accounts.id.initialize({
+        client_id: GOOGLE_CLIENT_ID,
+        callback: handleGoogleCredential,
+        auto_select: false,
+        cancel_on_tap_outside: true,
       });
+      // Render the hidden Google button (used as fallback for the OAuth popup)
+      if (googleButtonRef.current) {
+        window.google.accounts.id.renderButton(googleButtonRef.current, {
+          theme: "outline",
+          size: "large",
+          width: "100%",
+          text: "continue_with",
+          shape: "rectangular",
+        });
+      }
+    } catch (err) {
+      console.error(
+        "[GoogleAuth] Failed to initialize Google Identity Services:",
+        err,
+        "Client ID in use:",
+        GOOGLE_CLIENT_ID,
+      );
     }
   };
 
@@ -1012,11 +1020,65 @@ interface BulkFile {
   status: "pending" | "uploading" | "done" | "error";
 }
 
-// ─── Unified Upload Panel ─────────────────────────────────────────────────────
-// Combines single-image Add Design form and Bulk Upload in one scrollable view.
+// ─── Canister Health Check Banner ────────────────────────────────────────────
+// Shows a warning if the backend canister is not responding after login.
+// This helps diagnose "Canister is stopped" errors without needing DevTools.
 
-function UnifiedUploadPanel() {
-  // ── Single design form state ──────────────────────────────────────────────
+function CanisterHealthBanner() {
+  const [status, setStatus] = useState<"checking" | "ok" | "error">("checking");
+  const [errorMsg, setErrorMsg] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    const check = async () => {
+      try {
+        const actor = await getAdminActor();
+        // Lightweight read call to verify the canister is alive and responding
+        await actor.getNextDesignCode("All Embroidery Works");
+        if (!cancelled) setStatus("ok");
+      } catch (err) {
+        if (!cancelled) {
+          const msg = err instanceof Error ? err.message : String(err);
+          setStatus("error");
+          setErrorMsg(msg);
+          console.error("[CanisterHealth] Canister check failed:", msg);
+        }
+      }
+    };
+    check();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (status === "checking" || status === "ok") return null;
+
+  return (
+    <div
+      data-ocid="admin.canister.error_state"
+      className="mx-4 mt-2 flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2"
+    >
+      <AlertCircle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
+      <div>
+        <p className="text-[11px] font-semibold text-amber-700">
+          Backend Canister Unavailable
+        </p>
+        <p className="text-[10px] text-amber-600 leading-snug">
+          The backend may be restarting. Uploads and saves may fail. Please wait
+          a moment and try again.
+        </p>
+        <p className="text-[10px] text-amber-500 mt-0.5 font-mono break-all">
+          {errorMsg.substring(0, 120)}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ─── Single Design Upload Panel ───────────────────────────────────────────────
+// Extracted from UnifiedUploadPanel for use in the "Design Upload" tab.
+
+function SingleDesignUploadPanel() {
   const [form, setForm] = useState<DesignFormData>(emptyDesignForm);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadingIndex, setUploadingIndex] = useState<number | null>(null);
@@ -1111,7 +1173,7 @@ function UnifiedUploadPanel() {
   const displayImages =
     localPreviews.length > 0 ? localPreviews : form.imageUrls;
 
-  const handleSaveSingleDesign = async () => {
+  const handleSave = async () => {
     if (!form.category) {
       toast.error("Category is required");
       return;
@@ -1131,7 +1193,6 @@ function UnifiedUploadPanel() {
         isTrending: form.isTrending,
       });
       toast.success(`Design added: ${assignedCode} / ಡಿಸೈನ್ ಸೇರಿಸಲಾಗಿದೆ`);
-      // Reset form after successful save
       setForm(emptyDesignForm);
       setLocalPreviews([]);
       setUploadError("");
@@ -1141,7 +1202,254 @@ function UnifiedUploadPanel() {
     }
   };
 
-  // ── Bulk upload state ─────────────────────────────────────────────────────
+  return (
+    <div className="px-4 py-4 space-y-4">
+      {/* Multi-Image Upload */}
+      <div>
+        <Label className="text-xs mb-2 block">
+          Design Images / ಚಿತ್ರಗಳು{" "}
+          <span className="text-muted-foreground font-normal">(max 10)</span>
+        </Label>
+
+        {displayImages.length > 0 && (
+          <div className="grid grid-cols-4 gap-2 mb-2">
+            {displayImages.map((src, idx) => (
+              <div
+                key={`single-img-${
+                  // biome-ignore lint/suspicious/noArrayIndexKey: positional
+                  idx
+                }`}
+                className="relative aspect-square rounded-lg overflow-hidden bg-vew-sky-light/30 border border-border/60"
+              >
+                <img
+                  src={src}
+                  alt={`Uploaded ${idx + 1}`}
+                  className="w-full h-full object-cover"
+                />
+                <button
+                  type="button"
+                  onClick={() => removeImage(idx)}
+                  className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-red-500 text-white flex items-center justify-center hover:bg-red-600 shadow"
+                  aria-label={`Remove image ${idx + 1}`}
+                >
+                  <X className="w-3 h-3" />
+                </button>
+                {uploadingIndex === idx && (
+                  <div className="absolute inset-0 bg-black/40 flex flex-col items-center justify-center gap-1">
+                    <Loader2 className="w-4 h-4 text-white animate-spin" />
+                    <span className="text-[9px] text-white font-medium">
+                      {uploadProgress}%
+                    </span>
+                  </div>
+                )}
+              </div>
+            ))}
+            {displayImages.length < 10 && (
+              <button
+                type="button"
+                data-ocid="admin.design_upload.upload_button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploadingIndex !== null}
+                className="aspect-square rounded-lg border-2 border-dashed border-vew-sky/40 bg-vew-sky-light/20 flex flex-col items-center justify-center hover:bg-vew-sky-light/40 transition-colors disabled:opacity-50"
+              >
+                <ImagePlus className="w-5 h-5 text-vew-sky mb-0.5" />
+                <span className="text-[9px] text-vew-sky font-medium">Add</span>
+              </button>
+            )}
+          </div>
+        )}
+
+        {displayImages.length === 0 && (
+          <button
+            type="button"
+            data-ocid="admin.design_upload.upload_button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploadingIndex !== null}
+            className="w-full h-28 rounded-xl border-2 border-dashed border-vew-sky/40 bg-vew-sky-light/30 flex flex-col items-center justify-center hover:bg-vew-sky-light/50 transition-colors disabled:opacity-60"
+          >
+            {uploadingIndex !== null ? (
+              <div className="flex flex-col items-center gap-2 w-full px-6">
+                <Loader2 className="w-6 h-6 text-vew-sky animate-spin" />
+                <p className="text-xs text-vew-sky font-medium">
+                  Uploading... {uploadProgress}%
+                </p>
+                <div className="w-full bg-vew-sky/20 rounded-full h-1">
+                  <div
+                    className="bg-vew-sky h-1 rounded-full transition-all duration-200"
+                    style={{ width: `${uploadProgress}%` }}
+                  />
+                </div>
+              </div>
+            ) : (
+              <>
+                <Upload className="w-7 h-7 text-vew-sky mb-1.5" />
+                <p className="text-xs text-vew-sky font-medium">
+                  Upload Images (up to 10)
+                </p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">
+                  ಚಿತ್ರಗಳನ್ನು ಅಪ್ಲೋಡ್ ಮಾಡಿ
+                </p>
+              </>
+            )}
+          </button>
+        )}
+
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/png,image/jpeg,image/jpg"
+          multiple
+          className="hidden"
+          onChange={handleImagesChange}
+        />
+
+        {uploadError && (
+          <div
+            data-ocid="admin.design_upload.error_state"
+            className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl p-2.5 mt-1"
+          >
+            <X className="w-4 h-4 text-red-500 flex-shrink-0" />
+            <p className="text-[10px] text-red-700 leading-snug">
+              {uploadError}
+            </p>
+          </div>
+        )}
+        {displayImages.length === 0 && (
+          <p className="text-[10px] text-amber-600 mt-1 text-center">
+            At least one image is required / ಕನಿಷ್ಠ ಒಂದು ಚಿತ್ರ ಅಗತ್ಯ
+          </p>
+        )}
+        <p className="text-[10px] text-muted-foreground mt-1 text-center">
+          {displayImages.length}/10 images added
+        </p>
+      </div>
+
+      {/* Category */}
+      <div>
+        <Label className="text-xs mb-1.5 block">Category / ವರ್ಗ *</Label>
+        <Select
+          value={form.category}
+          onValueChange={(v) => setForm((prev) => ({ ...prev, category: v }))}
+        >
+          <SelectTrigger
+            data-ocid="admin.design_upload.category.select"
+            className="h-10 rounded-xl text-sm"
+          >
+            <SelectValue placeholder="Select category" />
+          </SelectTrigger>
+          <SelectContent>
+            {CATEGORIES.map((cat) => (
+              <SelectItem key={cat} value={cat}>
+                {cat}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* Auto code preview */}
+      <div
+        data-ocid="admin.design_upload.code_preview.panel"
+        className="bg-vew-sky-light/40 rounded-xl px-4 py-3"
+      >
+        {!form.category ? (
+          <p className="text-[11px] text-muted-foreground">
+            Select a category to see the auto-generated code
+          </p>
+        ) : nextCodeQuery.isLoading ? (
+          <div className="flex items-center gap-2">
+            <Loader2 className="w-3.5 h-3.5 text-vew-sky animate-spin" />
+            <p className="text-[11px] text-vew-sky">Generating code...</p>
+          </div>
+        ) : (
+          <>
+            <p className="text-[11px] text-vew-sky font-semibold">
+              Auto-generated code:{" "}
+              <span className="font-mono font-bold">
+                {nextCodeQuery.data ?? "—"}
+              </span>
+            </p>
+            <p className="text-[10px] text-muted-foreground mt-0.5">
+              ಸ್ವಯಂ ಕೋಡ್ ನಿಯೋಜಿಸಲಾಗುವುದು
+            </p>
+          </>
+        )}
+      </div>
+
+      {/* Work Type */}
+      <div>
+        <Label className="text-xs mb-1.5 block">Work Type / ಕೆಲಸದ ವಿಧ</Label>
+        <Input
+          data-ocid="admin.design_upload.worktype.input"
+          value={form.workType}
+          onChange={(e) =>
+            setForm((prev) => ({ ...prev, workType: e.target.value }))
+          }
+          placeholder="e.g. Zari Work, Thread Work"
+          className="h-10 text-sm rounded-xl"
+        />
+      </div>
+
+      {/* Toggles */}
+      <div className="space-y-3 pt-1">
+        <div className="flex items-center justify-between bg-vew-sky-light/40 rounded-xl px-4 py-3">
+          <div className="flex items-center gap-2">
+            <Flame className="w-4 h-4 text-orange-500" />
+            <div>
+              <p className="text-sm font-medium text-vew-navy">Trending</p>
+              <p className="text-[10px] text-muted-foreground">ಟ್ರೆಂಡಿಂಗ್</p>
+            </div>
+          </div>
+          <Switch
+            data-ocid="admin.design_upload.trending.switch"
+            checked={form.isTrending}
+            onCheckedChange={(v) =>
+              setForm((prev) => ({ ...prev, isTrending: v }))
+            }
+          />
+        </div>
+
+        <div className="flex items-center justify-between bg-pink-50 rounded-xl px-4 py-3">
+          <div className="flex items-center gap-2">
+            <Heart className="w-4 h-4 text-pink-500" />
+            <div>
+              <p className="text-sm font-medium text-vew-navy">Bridal</p>
+              <p className="text-[10px] text-muted-foreground">ಮದುವೆ ಡಿಸೈನ್</p>
+            </div>
+          </div>
+          <Switch
+            data-ocid="admin.design_upload.bridal.switch"
+            checked={form.isBridal}
+            onCheckedChange={(v) =>
+              setForm((prev) => ({ ...prev, isBridal: v }))
+            }
+          />
+        </div>
+      </div>
+
+      {/* Save button */}
+      <Button
+        data-ocid="admin.design_upload.submit_button"
+        onClick={handleSave}
+        disabled={createDesign.isPending || uploadingIndex !== null}
+        className="w-full h-11 rounded-xl bg-vew-sky text-white hover:bg-vew-sky-dark font-semibold"
+      >
+        {createDesign.isPending ? (
+          <span className="flex items-center gap-2">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            Saving...
+          </span>
+        ) : (
+          "Add Design / ಡಿಸೈನ್ ಸೇರಿಸಿ"
+        )}
+      </Button>
+    </div>
+  );
+}
+
+// ─── Bulk Upload Panel (standalone) ──────────────────────────────────────────
+
+function BulkUploadPanel() {
   const bulkFileInputRef = useRef<HTMLInputElement>(null);
   const [bulkFiles, setBulkFiles] = useState<BulkFile[]>([]);
   const [isUploading, setIsUploading] = useState(false);
@@ -1289,473 +1597,200 @@ function UnifiedUploadPanel() {
     bulkFiles.length > 0 ? (uploadedCount / bulkFiles.length) * 100 : 0;
 
   return (
-    <div
-      data-ocid="admin.unified_upload.section"
-      className="flex flex-col overflow-y-auto"
-    >
-      {/* ── Section 1: Add Single Design ────────────────────────────────────── */}
-      <div className="px-4 pt-4 pb-2">
-        <div className="flex items-center gap-2 mb-3">
-          <ImagePlus className="w-4 h-4 text-vew-sky" />
-          <h3 className="text-sm font-bold text-vew-navy">
-            Add Single Design / ಒಂದು ಡಿಸೈನ್ ಸೇರಿಸಿ
-          </h3>
-        </div>
+    <div className="px-4 py-4 space-y-4">
+      <div className="bg-vew-sky-light/30 rounded-xl p-3">
+        <p className="text-[10px] text-muted-foreground leading-snug">
+          Upload up to 500 images at once. Design codes are auto-generated for
+          each image based on the selected category.
+        </p>
       </div>
 
-      {/* Single design form body */}
-      <div className="px-4 space-y-4 pb-2">
-        {/* Multi-Image Upload */}
+      {/* Category selector */}
+      <div>
+        <Label className="text-xs mb-1.5 block">
+          Category for all images / ಎಲ್ಲ ಚಿತ್ರಗಳಿಗೆ ವರ್ಗ
+        </Label>
+        <Select value={bulkCategory} onValueChange={setBulkCategory}>
+          <SelectTrigger
+            data-ocid="admin.bulk_upload.category.select"
+            className="h-10 rounded-xl text-sm"
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {CATEGORIES.map((cat) => (
+              <SelectItem key={cat} value={cat}>
+                {cat}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* Drop zone */}
+      {bulkFiles.length === 0 ? (
+        <button
+          type="button"
+          data-ocid="admin.bulk_upload.dropzone"
+          onClick={() => bulkFileInputRef.current?.click()}
+          className="w-full h-36 rounded-xl border-2 border-dashed border-vew-sky/40 bg-vew-sky-light/20 flex flex-col items-center justify-center hover:bg-vew-sky-light/40 transition-colors gap-2"
+        >
+          <Upload className="w-8 h-8 text-vew-sky" />
+          <p className="text-sm font-semibold text-vew-sky">
+            Select up to 500 images
+          </p>
+          <p className="text-[10px] text-muted-foreground">
+            Tap to browse files / ಫೈಲ್ ಆಯ್ಕೆ ಮಾಡಿ
+          </p>
+        </button>
+      ) : (
         <div>
-          <Label className="text-xs mb-2 block">
-            Design Images / ಚಿತ್ರಗಳು{" "}
-            <span className="text-muted-foreground font-normal">(max 10)</span>
-          </Label>
-
-          {displayImages.length > 0 && (
-            <div className="grid grid-cols-4 gap-2 mb-2">
-              {displayImages.map((src, idx) => (
-                <div
-                  key={`single-img-${
-                    // biome-ignore lint/suspicious/noArrayIndexKey: positional
-                    idx
-                  }`}
-                  className="relative aspect-square rounded-lg overflow-hidden bg-vew-sky-light/30 border border-border/60"
-                >
-                  <img
-                    src={src}
-                    alt={`Uploaded ${idx + 1}`}
-                    className="w-full h-full object-cover"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => removeImage(idx)}
-                    className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-red-500 text-white flex items-center justify-center hover:bg-red-600 shadow"
-                    aria-label={`Remove image ${idx + 1}`}
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                  {uploadingIndex === idx && (
-                    <div className="absolute inset-0 bg-black/40 flex flex-col items-center justify-center gap-1">
-                      <Loader2 className="w-4 h-4 text-white animate-spin" />
-                      <span className="text-[9px] text-white font-medium">
-                        {uploadProgress}%
-                      </span>
-                    </div>
-                  )}
-                </div>
-              ))}
-              {displayImages.length < 10 && (
-                <button
-                  type="button"
-                  data-ocid="admin.upload.single.upload_button"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={uploadingIndex !== null}
-                  className="aspect-square rounded-lg border-2 border-dashed border-vew-sky/40 bg-vew-sky-light/20 flex flex-col items-center justify-center hover:bg-vew-sky-light/40 transition-colors disabled:opacity-50"
-                >
-                  <ImagePlus className="w-5 h-5 text-vew-sky mb-0.5" />
-                  <span className="text-[9px] text-vew-sky font-medium">
-                    Add
-                  </span>
-                </button>
-              )}
-            </div>
-          )}
-
-          {displayImages.length === 0 && (
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs font-semibold text-vew-navy">
+              {bulkFiles.length} file{bulkFiles.length !== 1 ? "s" : ""}{" "}
+              selected
+            </p>
             <button
               type="button"
-              data-ocid="admin.upload.single.upload_button"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploadingIndex !== null}
-              className="w-full h-28 rounded-xl border-2 border-dashed border-vew-sky/40 bg-vew-sky-light/30 flex flex-col items-center justify-center hover:bg-vew-sky-light/50 transition-colors disabled:opacity-60"
+              onClick={handleBulkClear}
+              disabled={isUploading}
+              className="text-xs text-muted-foreground hover:text-destructive transition-colors"
             >
-              {uploadingIndex !== null ? (
-                <div className="flex flex-col items-center gap-2 w-full px-6">
-                  <Loader2 className="w-6 h-6 text-vew-sky animate-spin" />
-                  <p className="text-xs text-vew-sky font-medium">
-                    Uploading... {uploadProgress}%
-                  </p>
-                  <div className="w-full bg-vew-sky/20 rounded-full h-1">
-                    <div
-                      className="bg-vew-sky h-1 rounded-full transition-all duration-200"
-                      style={{ width: `${uploadProgress}%` }}
-                    />
+              Clear all
+            </button>
+          </div>
+
+          {isUploading && (
+            <div className="mb-3">
+              <div className="flex justify-between text-[10px] text-muted-foreground mb-1">
+                <span>
+                  Uploading {uploadedCount}/{bulkFiles.length}...
+                </span>
+                <span>{Math.round(bulkProgress)}%</span>
+              </div>
+              <Progress
+                data-ocid="admin.bulk_upload.loading_state"
+                value={bulkProgress}
+                className="h-2 rounded-full"
+              />
+            </div>
+          )}
+
+          {isDone && (
+            <div
+              data-ocid="admin.bulk_upload.success_state"
+              className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-xl p-3 mb-3"
+            >
+              <CheckCircle2 className="w-5 h-5 text-green-500 flex-shrink-0" />
+              <div>
+                <p className="text-xs font-semibold text-green-700">
+                  Upload complete!
+                </p>
+                <p className="text-[10px] text-green-600">
+                  {bulkFiles.filter((f) => f.status === "done").length} designs
+                  added successfully
+                </p>
+              </div>
+            </div>
+          )}
+
+          {errorMsg && (
+            <div
+              data-ocid="admin.bulk_upload.error_state"
+              className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl p-3 mb-3"
+            >
+              <X className="w-5 h-5 text-red-500 flex-shrink-0" />
+              <p className="text-xs text-red-700">{errorMsg}</p>
+            </div>
+          )}
+
+          <div className="grid grid-cols-4 gap-1.5 max-h-60 overflow-y-auto mb-3">
+            {bulkFiles.map((item, idx) => (
+              <div
+                key={`bulk-${
+                  // biome-ignore lint/suspicious/noArrayIndexKey: positional
+                  idx
+                }`}
+                className="relative aspect-square rounded-lg overflow-hidden bg-vew-sky-light/30"
+              >
+                <img
+                  src={item.preview}
+                  alt={item.file.name}
+                  className="w-full h-full object-cover"
+                />
+                {item.status === "uploading" && (
+                  <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                    <Loader2 className="w-4 h-4 text-white animate-spin" />
                   </div>
-                </div>
+                )}
+                {item.status === "done" && (
+                  <div className="absolute inset-0 bg-green-500/30 flex items-center justify-center">
+                    <CheckCircle2 className="w-4 h-4 text-white" />
+                  </div>
+                )}
+                {item.status === "error" && (
+                  <div className="absolute inset-0 bg-red-500/40 flex items-center justify-center">
+                    <X className="w-4 h-4 text-white" />
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {!isDone && (
+            <Button
+              data-ocid="admin.bulk_upload.upload_button"
+              onClick={handleUploadAll}
+              disabled={isUploading || createDesignBulk.isPending}
+              className="w-full h-12 rounded-xl bg-vew-sky text-white hover:bg-vew-sky-dark font-semibold gap-2"
+            >
+              {isUploading || createDesignBulk.isPending ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  {createDesignBulk.isPending
+                    ? "Saving designs..."
+                    : `Uploading ${uploadedCount}/${bulkFiles.length}...`}
+                </>
               ) : (
                 <>
-                  <Upload className="w-7 h-7 text-vew-sky mb-1.5" />
-                  <p className="text-xs text-vew-sky font-medium">
-                    Upload Images (up to 10)
-                  </p>
-                  <p className="text-[10px] text-muted-foreground mt-0.5">
-                    ಚಿತ್ರಗಳನ್ನು ಅಪ್ಲೋಡ್ ಮಾಡಿ
-                  </p>
+                  <Upload className="w-4 h-4" />
+                  Upload All {bulkFiles.length} Images
                 </>
               )}
-            </button>
+            </Button>
           )}
 
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/png,image/jpeg,image/jpg"
-            multiple
-            className="hidden"
-            onChange={handleImagesChange}
-          />
-
-          {uploadError && (
-            <div
-              data-ocid="admin.upload.single.error_state"
-              className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl p-2.5 mt-1"
+          {isDone && (
+            <Button
+              variant="outline"
+              onClick={handleBulkClear}
+              className="w-full rounded-xl border-vew-sky text-vew-sky mt-2"
             >
-              <X className="w-4 h-4 text-red-500 flex-shrink-0" />
-              <p className="text-[10px] text-red-700 leading-snug">
-                {uploadError}
-              </p>
-            </div>
-          )}
-          {displayImages.length === 0 && (
-            <p className="text-[10px] text-amber-600 mt-1 text-center">
-              At least one image is required / ಕನಿಷ್ಠ ಒಂದು ಚಿತ್ರ ಅಗತ್ಯ
-            </p>
-          )}
-          <p className="text-[10px] text-muted-foreground mt-1 text-center">
-            {displayImages.length}/10 images added
-          </p>
-        </div>
-
-        {/* Category */}
-        <div>
-          <Label className="text-xs mb-1.5 block">Category / ವರ್ಗ *</Label>
-          <Select
-            value={form.category}
-            onValueChange={(v) => setForm((prev) => ({ ...prev, category: v }))}
-          >
-            <SelectTrigger
-              data-ocid="admin.upload.single.category.select"
-              className="h-10 rounded-xl text-sm"
-            >
-              <SelectValue placeholder="Select category" />
-            </SelectTrigger>
-            <SelectContent>
-              {CATEGORIES.map((cat) => (
-                <SelectItem key={cat} value={cat}>
-                  {cat}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        {/* Auto code preview */}
-        <div
-          data-ocid="admin.upload.single.code_preview.panel"
-          className="bg-vew-sky-light/40 rounded-xl px-4 py-3"
-        >
-          {!form.category ? (
-            <p className="text-[11px] text-muted-foreground">
-              Select a category to see the auto-generated code
-            </p>
-          ) : nextCodeQuery.isLoading ? (
-            <div className="flex items-center gap-2">
-              <Loader2 className="w-3.5 h-3.5 text-vew-sky animate-spin" />
-              <p className="text-[11px] text-vew-sky">Generating code...</p>
-            </div>
-          ) : (
-            <>
-              <p className="text-[11px] text-vew-sky font-semibold">
-                Auto-generated code:{" "}
-                <span className="font-mono font-bold">
-                  {nextCodeQuery.data ?? "—"}
-                </span>
-              </p>
-              <p className="text-[10px] text-muted-foreground mt-0.5">
-                ಸ್ವಯಂ ಕೋಡ್ ನಿಯೋಜಿಸಲಾಗುವುದು
-              </p>
-            </>
+              Upload More Images / ಇನ್ನಷ್ಟು ಅಪ್ಲೋಡ್ ಮಾಡಿ
+            </Button>
           )}
         </div>
+      )}
 
-        {/* Work Type */}
-        <div>
-          <Label className="text-xs mb-1.5 block">Work Type / ಕೆಲಸದ ವಿಧ</Label>
-          <Input
-            data-ocid="admin.upload.single.worktype.input"
-            value={form.workType}
-            onChange={(e) =>
-              setForm((prev) => ({ ...prev, workType: e.target.value }))
-            }
-            placeholder="e.g. Zari Work, Thread Work"
-            className="h-10 text-sm rounded-xl"
-          />
-        </div>
+      <input
+        ref={bulkFileInputRef}
+        type="file"
+        accept="image/png,image/jpeg,image/jpg"
+        multiple
+        className="hidden"
+        onChange={handleBulkFilesChange}
+      />
 
-        {/* Toggles */}
-        <div className="space-y-3 pt-1">
-          <div className="flex items-center justify-between bg-vew-sky-light/40 rounded-xl px-4 py-3">
-            <div className="flex items-center gap-2">
-              <Flame className="w-4 h-4 text-orange-500" />
-              <div>
-                <p className="text-sm font-medium text-vew-navy">Trending</p>
-                <p className="text-[10px] text-muted-foreground">ಟ್ರೆಂಡಿಂಗ್</p>
-              </div>
-            </div>
-            <Switch
-              data-ocid="admin.upload.single.trending.switch"
-              checked={form.isTrending}
-              onCheckedChange={(v) =>
-                setForm((prev) => ({ ...prev, isTrending: v }))
-              }
-            />
-          </div>
-
-          <div className="flex items-center justify-between bg-pink-50 rounded-xl px-4 py-3">
-            <div className="flex items-center gap-2">
-              <Heart className="w-4 h-4 text-pink-500" />
-              <div>
-                <p className="text-sm font-medium text-vew-navy">Bridal</p>
-                <p className="text-[10px] text-muted-foreground">ಮದುವೆ ಡಿಸೈನ್</p>
-              </div>
-            </div>
-            <Switch
-              data-ocid="admin.upload.single.bridal.switch"
-              checked={form.isBridal}
-              onCheckedChange={(v) =>
-                setForm((prev) => ({ ...prev, isBridal: v }))
-              }
-            />
-          </div>
-        </div>
-
-        {/* Save button */}
-        <Button
-          data-ocid="admin.upload.single.submit_button"
-          onClick={handleSaveSingleDesign}
-          disabled={createDesign.isPending || uploadingIndex !== null}
-          className="w-full h-11 rounded-xl bg-vew-sky text-white hover:bg-vew-sky-dark font-semibold"
-        >
-          {createDesign.isPending ? (
-            <span className="flex items-center gap-2">
-              <Loader2 className="w-4 h-4 animate-spin" />
-              Saving...
-            </span>
-          ) : (
-            "Add Design / ಡಿಸೈನ್ ಸೇರಿಸಿ"
-          )}
-        </Button>
-      </div>
-
-      {/* ── Divider ─────────────────────────────────────────────────────────── */}
-      <div className="mx-4 my-4 border-t border-border/60" />
-
-      {/* ── Section 2: Bulk Upload ───────────────────────────────────────────── */}
-      <div className="px-4 pb-2">
-        <div className="flex items-center gap-2 mb-3">
-          <Layers className="w-4 h-4 text-vew-sky" />
-          <h3 className="text-sm font-bold text-vew-navy">
-            Bulk Upload / ಬಲ್ಕ್ ಅಪ್ಲೋಡ್
-          </h3>
-        </div>
-      </div>
-
-      <div className="px-4 pb-6 space-y-4">
-        <div className="bg-vew-sky-light/30 rounded-xl p-3">
-          <p className="text-[10px] text-muted-foreground leading-snug">
-            Upload up to 500 images at once. Design codes are auto-generated for
-            each image based on the selected category.
-          </p>
-        </div>
-
-        {/* Category selector */}
-        <div>
-          <Label className="text-xs mb-1.5 block">
-            Category for all images / ಎಲ್ಲ ಚಿತ್ರಗಳಿಗೆ ವರ್ಗ
-          </Label>
-          <Select value={bulkCategory} onValueChange={setBulkCategory}>
-            <SelectTrigger
-              data-ocid="admin.upload.bulk.category.select"
-              className="h-10 rounded-xl text-sm"
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {CATEGORIES.map((cat) => (
-                <SelectItem key={cat} value={cat}>
-                  {cat}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        {/* Drop zone */}
-        {bulkFiles.length === 0 ? (
-          <button
-            type="button"
-            data-ocid="admin.upload.bulk.dropzone"
-            onClick={() => bulkFileInputRef.current?.click()}
-            className="w-full h-36 rounded-xl border-2 border-dashed border-vew-sky/40 bg-vew-sky-light/20 flex flex-col items-center justify-center hover:bg-vew-sky-light/40 transition-colors gap-2"
-          >
-            <Upload className="w-8 h-8 text-vew-sky" />
-            <p className="text-sm font-semibold text-vew-sky">
-              Select up to 500 images
-            </p>
-            <p className="text-[10px] text-muted-foreground">
-              Tap to browse files / ಫೈಲ್ ಆಯ್ಕೆ ಮಾಡಿ
-            </p>
-          </button>
-        ) : (
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-semibold text-vew-navy">
-                {bulkFiles.length} file{bulkFiles.length !== 1 ? "s" : ""}{" "}
-                selected
-              </p>
-              <button
-                type="button"
-                onClick={handleBulkClear}
-                disabled={isUploading}
-                className="text-xs text-muted-foreground hover:text-destructive transition-colors"
-              >
-                Clear all
-              </button>
-            </div>
-
-            {isUploading && (
-              <div className="mb-3">
-                <div className="flex justify-between text-[10px] text-muted-foreground mb-1">
-                  <span>
-                    Uploading {uploadedCount}/{bulkFiles.length}...
-                  </span>
-                  <span>{Math.round(bulkProgress)}%</span>
-                </div>
-                <Progress
-                  data-ocid="admin.upload.bulk.loading_state"
-                  value={bulkProgress}
-                  className="h-2 rounded-full"
-                />
-              </div>
-            )}
-
-            {isDone && (
-              <div
-                data-ocid="admin.upload.bulk.success_state"
-                className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-xl p-3 mb-3"
-              >
-                <CheckCircle2 className="w-5 h-5 text-green-500 flex-shrink-0" />
-                <div>
-                  <p className="text-xs font-semibold text-green-700">
-                    Upload complete!
-                  </p>
-                  <p className="text-[10px] text-green-600">
-                    {bulkFiles.filter((f) => f.status === "done").length}{" "}
-                    designs added successfully
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {errorMsg && (
-              <div
-                data-ocid="admin.upload.bulk.error_state"
-                className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl p-3 mb-3"
-              >
-                <X className="w-5 h-5 text-red-500 flex-shrink-0" />
-                <p className="text-xs text-red-700">{errorMsg}</p>
-              </div>
-            )}
-
-            <div className="grid grid-cols-4 gap-1.5 max-h-60 overflow-y-auto mb-3">
-              {bulkFiles.map((item, idx) => (
-                <div
-                  key={`bulk-${
-                    // biome-ignore lint/suspicious/noArrayIndexKey: positional
-                    idx
-                  }`}
-                  className="relative aspect-square rounded-lg overflow-hidden bg-vew-sky-light/30"
-                >
-                  <img
-                    src={item.preview}
-                    alt={item.file.name}
-                    className="w-full h-full object-cover"
-                  />
-                  {item.status === "uploading" && (
-                    <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-                      <Loader2 className="w-4 h-4 text-white animate-spin" />
-                    </div>
-                  )}
-                  {item.status === "done" && (
-                    <div className="absolute inset-0 bg-green-500/30 flex items-center justify-center">
-                      <CheckCircle2 className="w-4 h-4 text-white" />
-                    </div>
-                  )}
-                  {item.status === "error" && (
-                    <div className="absolute inset-0 bg-red-500/40 flex items-center justify-center">
-                      <X className="w-4 h-4 text-white" />
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-
-            {!isDone && (
-              <Button
-                data-ocid="admin.upload.bulk.upload_button"
-                onClick={handleUploadAll}
-                disabled={isUploading || createDesignBulk.isPending}
-                className="w-full h-12 rounded-xl bg-vew-sky text-white hover:bg-vew-sky-dark font-semibold gap-2"
-              >
-                {isUploading || createDesignBulk.isPending ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    {createDesignBulk.isPending
-                      ? "Saving designs..."
-                      : `Uploading ${uploadedCount}/${bulkFiles.length}...`}
-                  </>
-                ) : (
-                  <>
-                    <Upload className="w-4 h-4" />
-                    Upload All {bulkFiles.length} Images
-                  </>
-                )}
-              </Button>
-            )}
-
-            {isDone && (
-              <Button
-                variant="outline"
-                onClick={handleBulkClear}
-                className="w-full rounded-xl border-vew-sky text-vew-sky mt-2"
-              >
-                Upload More Images / ಇನ್ನಷ್ಟು ಅಪ್ಲೋಡ್ ಮಾಡಿ
-              </Button>
-            )}
-          </div>
-        )}
-
-        <input
-          ref={bulkFileInputRef}
-          type="file"
-          accept="image/png,image/jpeg,image/jpg"
-          multiple
-          className="hidden"
-          onChange={handleBulkFilesChange}
-        />
-
-        <div className="bg-amber-50 rounded-xl p-3 border border-amber-200/60">
-          <p className="text-[10px] text-amber-700 leading-relaxed">
-            <strong>Auto settings per image:</strong>
-            <br />
-            Category: {bulkCategory} · Work Type: auto-assigned
-            <br />
-            Trending: Off · Bridal: Off
-            <br />
-            Design Code: auto-generated (e.g. VEW-AE-001, VEW-AE-002...)
-          </p>
-        </div>
+      <div className="bg-amber-50 rounded-xl p-3 border border-amber-200/60">
+        <p className="text-[10px] text-amber-700 leading-relaxed">
+          <strong>Auto settings per image:</strong>
+          <br />
+          Category: {bulkCategory} · Work Type: auto-assigned
+          <br />
+          Trending: Off · Bridal: Off
+          <br />
+          Design Code: auto-generated (e.g. VEW-AE-001, VEW-AE-002...)
+        </p>
       </div>
     </div>
   );
@@ -1770,7 +1805,7 @@ export function AdminScreen({ onBack }: { onBack: () => void }) {
   // without waiting for a full sessionStorage round-trip.
   const [loggedInLocal, setLoggedInLocal] = useState(isLoggedIn);
 
-  const [activeTab, setActiveTab] = useState<AdminTab>("designs");
+  const [activeTab, setActiveTab] = useState<AdminTab>("update_design");
   const [showForm, setShowForm] = useState(false);
   const [editingDesign, setEditingDesign] = useState<Design | null>(null);
   const [deleteDesignTarget, setDeleteDesignTarget] = useState<Design | null>(
@@ -1851,7 +1886,7 @@ export function AdminScreen({ onBack }: { onBack: () => void }) {
         });
         toast.success(`Design added: ${assignedCode} / ಡಿಸೈನ್ ಸೇರಿಸಲಾಗಿದೆ`);
         // Switch to the designs list so admin can immediately see the new entry
-        setActiveTab("designs");
+        setActiveTab("update_design");
       }
       setShowForm(false);
       setEditingDesign(null);
@@ -1920,6 +1955,14 @@ export function AdminScreen({ onBack }: { onBack: () => void }) {
     );
   }
 
+  // 4-tab definitions for the admin panel
+  const ADMIN_TABS: Array<{ id: AdminTab; label: string; kannada: string }> = [
+    { id: "update_design", label: "Update Design", kannada: "ಡಿಸೈನ್ ಅಪ್ಡೇಟ್" },
+    { id: "design_upload", label: "Design Upload", kannada: "ಡಿಸೈನ್ ಅಪ್ಲೋಡ್" },
+    { id: "bulk_upload", label: "Bulk Upload", kannada: "ಬಲ್ಕ್ ಅಪ್ಲೋಡ್" },
+    { id: "customer", label: "Customer", kannada: "ಗ್ರಾಹಕ" },
+  ];
+
   return (
     <div className="flex-1 flex flex-col">
       {/* Header */}
@@ -1938,6 +1981,7 @@ export function AdminScreen({ onBack }: { onBack: () => void }) {
         </div>
         <button
           type="button"
+          data-ocid="admin.logout.button"
           onClick={() => {
             logout();
             setLoggedInLocal(false);
@@ -1949,34 +1993,26 @@ export function AdminScreen({ onBack }: { onBack: () => void }) {
         </button>
       </div>
 
-      {/* Tabs */}
-      <div className="flex border-b border-border/60 flex-shrink-0">
-        {[
-          { id: "designs" as AdminTab, label: "Designs", kannada: "ಡಿಸೈನ್ಸ್" },
-          { id: "upload" as AdminTab, label: "Upload", kannada: "ಅಪ್ಲೋಡ್" },
-          {
-            id: "customers" as AdminTab,
-            label: "Customers",
-            kannada: "ಗ್ರಾಹಕರು",
-          },
-        ].map((tab) => (
+      {/* 4 Tabs */}
+      <div className="flex border-b border-border/60 flex-shrink-0 overflow-x-auto">
+        {ADMIN_TABS.map((tab) => (
           <button
             key={tab.id}
             type="button"
-            data-ocid={
-              tab.id === "upload" ? "admin.upload.tab" : `admin.${tab.id}.tab`
-            }
+            data-ocid={`admin.${tab.id}.tab`}
             onClick={() => setActiveTab(tab.id)}
-            className={`flex-1 px-3 py-2.5 text-center transition-colors ${
+            className={`flex-1 min-w-0 px-2 py-2.5 text-center transition-colors whitespace-nowrap ${
               activeTab === tab.id
                 ? "text-vew-sky border-b-2 border-vew-sky"
                 : "text-muted-foreground hover:text-foreground"
             }`}
           >
-            <div className="text-xs font-semibold whitespace-nowrap">
+            <div className="text-[10px] font-semibold leading-tight">
               {tab.label}
             </div>
-            <div className="text-[9px] opacity-60">{tab.kannada}</div>
+            <div className="text-[8px] opacity-60 leading-tight mt-0.5">
+              {tab.kannada}
+            </div>
           </button>
         ))}
       </div>
@@ -1984,16 +2020,19 @@ export function AdminScreen({ onBack }: { onBack: () => void }) {
       {/* Auth Status Banner — shows token health without needing DevTools */}
       <AuthStatusBanner />
 
+      {/* Canister Health Check Banner — warns if the backend is not responding */}
+      <CanisterHealthBanner />
+
       {/* Content */}
       <div className="flex-1 overflow-y-auto">
-        {/* Designs Tab */}
-        {activeTab === "designs" && (
+        {/* Update Design Tab — list, edit, delete designs */}
+        {activeTab === "update_design" && (
           <div>
             <div className="px-4 pt-3 pb-2 flex gap-2">
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
-                  data-ocid="admin.designs.search_input"
+                  data-ocid="admin.update_design.search_input"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Search designs..."
@@ -2001,7 +2040,7 @@ export function AdminScreen({ onBack }: { onBack: () => void }) {
                 />
               </div>
               <Button
-                data-ocid="admin.designs.primary_button"
+                data-ocid="admin.update_design.primary_button"
                 onClick={() => {
                   setEditingDesign(null);
                   setShowForm(true);
@@ -2025,7 +2064,7 @@ export function AdminScreen({ onBack }: { onBack: () => void }) {
                 {filteredDesigns.map((design, idx) => (
                   <div
                     key={design.id.toString()}
-                    data-ocid={`admin.designs.item.${idx + 1}`}
+                    data-ocid={`admin.update_design.item.${idx + 1}`}
                     className="flex items-center gap-3 bg-white rounded-xl border border-border/60 shadow-xs px-3 py-2.5"
                   >
                     {/* Thumbnail */}
@@ -2091,7 +2130,7 @@ export function AdminScreen({ onBack }: { onBack: () => void }) {
                     <div className="flex items-center gap-1 flex-shrink-0">
                       <button
                         type="button"
-                        data-ocid={`admin.designs.edit_button.${idx + 1}`}
+                        data-ocid={`admin.update_design.edit_button.${idx + 1}`}
                         onClick={() => {
                           setEditingDesign(design);
                           setShowForm(true);
@@ -2102,7 +2141,7 @@ export function AdminScreen({ onBack }: { onBack: () => void }) {
                       </button>
                       <button
                         type="button"
-                        data-ocid={`admin.designs.delete_button.${idx + 1}`}
+                        data-ocid={`admin.update_design.delete_button.${idx + 1}`}
                         onClick={() => setDeleteDesignTarget(design)}
                         className="w-7 h-7 rounded-lg bg-red-50 flex items-center justify-center hover:bg-red-100"
                       >
@@ -2114,7 +2153,7 @@ export function AdminScreen({ onBack }: { onBack: () => void }) {
 
                 {filteredDesigns.length === 0 && (
                   <div
-                    data-ocid="admin.designs.empty_state"
+                    data-ocid="admin.update_design.empty_state"
                     className="text-center py-8 text-muted-foreground text-sm"
                   >
                     No designs found
@@ -2125,11 +2164,14 @@ export function AdminScreen({ onBack }: { onBack: () => void }) {
           </div>
         )}
 
-        {/* Upload Tab — unified Add Design + Bulk Upload */}
-        {activeTab === "upload" && <UnifiedUploadPanel />}
+        {/* Design Upload Tab — single design upload form */}
+        {activeTab === "design_upload" && <SingleDesignUploadPanel />}
 
-        {/* Customers Tab */}
-        {activeTab === "customers" && (
+        {/* Bulk Upload Tab — bulk image upload */}
+        {activeTab === "bulk_upload" && <BulkUploadPanel />}
+
+        {/* Customer Tab */}
+        {activeTab === "customer" && (
           <div>
             <div className="px-4 pt-3 pb-2">
               <p className="text-xs text-muted-foreground">
@@ -2150,7 +2192,7 @@ export function AdminScreen({ onBack }: { onBack: () => void }) {
                 {(customersQuery.data ?? []).map((c: Customer, idx) => (
                   <div
                     key={c.id.toString()}
-                    data-ocid={`admin.customers.item.${idx + 1}`}
+                    data-ocid={`admin.customer.item.${idx + 1}`}
                     className="flex items-center gap-3 bg-white rounded-xl border border-border/60 shadow-xs px-3.5 py-3"
                   >
                     <div className="w-9 h-9 rounded-full bg-vew-sky-light flex items-center justify-center flex-shrink-0">
@@ -2184,7 +2226,7 @@ export function AdminScreen({ onBack }: { onBack: () => void }) {
                     </div>
                     <button
                       type="button"
-                      data-ocid={`admin.customers.delete_button.${idx + 1}`}
+                      data-ocid={`admin.customer.delete_button.${idx + 1}`}
                       onClick={async () => {
                         try {
                           await deleteCustomerMutation.mutateAsync(c.id);
@@ -2202,12 +2244,12 @@ export function AdminScreen({ onBack }: { onBack: () => void }) {
 
                 {(customersQuery.data ?? []).length === 0 && (
                   <div
-                    data-ocid="admin.customers.empty_state"
+                    data-ocid="admin.customer.empty_state"
                     className="text-center py-8 text-muted-foreground text-sm"
                   >
                     No customers yet
                     <p className="text-xs text-muted-foreground/60 mt-1">
-                      Customers added via the Customers tab will appear here
+                      Customers added via the Customers screen will appear here
                     </p>
                   </div>
                 )}

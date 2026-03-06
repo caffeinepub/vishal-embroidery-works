@@ -1,34 +1,17 @@
 import { Toaster } from "@/components/ui/sonner";
-import {
-  Heart,
-  Home,
-  Phone,
-  Scissors,
-  Shield,
-  Sparkles,
-  Users,
-} from "lucide-react";
+import { Heart, Home, Scissors, Sparkles } from "lucide-react";
 import { useState } from "react";
 import type { Design } from "./backend.d";
 
 import { AdminScreen } from "./components/screens/AdminScreen";
 import { BlouseScreen } from "./components/screens/BlouseScreen";
-import { ContactScreen } from "./components/screens/ContactScreen";
-import { CustomersScreen } from "./components/screens/CustomersScreen";
 import { EmbroideryScreen } from "./components/screens/EmbroideryScreen";
 import { FavouriteScreen } from "./components/screens/FavouriteScreen";
 import { HomeScreen } from "./components/screens/HomeScreen";
 import { SplashScreen } from "./components/screens/SplashScreen";
 import { DesignDetailModal } from "./components/shared/DesignDetailModal";
 
-type Tab =
-  | "home"
-  | "embroidery"
-  | "blouse"
-  | "favourite"
-  | "customers"
-  | "contact"
-  | "admin";
+type Tab = "home" | "embroidery" | "blouse" | "favourite";
 
 const NAV_ITEMS: {
   id: Tab;
@@ -60,24 +43,6 @@ const NAV_ITEMS: {
     kannada: "ಮೆಚ್ಚಿನ",
     icon: <Heart className="w-5 h-5" />,
   },
-  {
-    id: "customers",
-    label: "Customers",
-    kannada: "ಗ್ರಾಹಕರು",
-    icon: <Users className="w-5 h-5" />,
-  },
-  {
-    id: "contact",
-    label: "Contact",
-    kannada: "ಸಂಪರ್ಕ",
-    icon: <Phone className="w-5 h-5" />,
-  },
-  {
-    id: "admin",
-    label: "Admin",
-    kannada: "ಅಡ್ಮಿನ್",
-    icon: <Shield className="w-5 h-5" />,
-  },
 ];
 
 export default function App() {
@@ -85,6 +50,8 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>("home");
   const [selectedDesign, setSelectedDesign] = useState<Design | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
+  // Hidden admin panel — opened via VEW button in top-left of Home header
+  const [showAdmin, setShowAdmin] = useState(false);
 
   const handleDesignClick = (design: Design) => {
     setSelectedDesign(design);
@@ -100,12 +67,24 @@ export default function App() {
     embroidery: { en: "Embroidery", kn: "ಕಸೂತಿ" },
     blouse: { en: "Blouse", kn: "ಬ್ಲೌಸ್" },
     favourite: { en: "Favourites", kn: "ಮೆಚ್ಚಿನವು" },
-    customers: { en: "Customers", kn: "ಗ್ರಾಹಕರು" },
-    contact: { en: "Contact", kn: "ಸಂಪರ್ಕ" },
-    admin: { en: "Admin Panel", kn: "ಅಡ್ಮಿನ್" },
   };
 
-  const showHeader = activeTab !== "home" && activeTab !== "admin";
+  const showHeader = activeTab !== "home";
+
+  // Admin panel overlay — renders full-screen on top of the main app
+  if (showAdmin && !showSplash) {
+    return (
+      <>
+        <div className="w-full max-w-[430px] mx-auto min-h-screen bg-background flex flex-col relative overflow-hidden">
+          <AdminScreen onBack={() => setShowAdmin(false)} />
+        </div>
+        <Toaster
+          position="top-center"
+          toastOptions={{ classNames: { toast: "rounded-xl shadow-card" } }}
+        />
+      </>
+    );
+  }
 
   return (
     <>
@@ -163,11 +142,18 @@ export default function App() {
                 </h1>
               </div>
             </div>
-            <div className="flex items-center gap-1">
-              <span className="bg-vew-sky-light text-vew-sky text-[10px] font-bold px-2 py-0.5 rounded-full">
-                VEW
-              </span>
-            </div>
+
+            {/* VEW button — hidden admin access point (top-left area of header) */}
+            {/* Label is kept exactly as "VEW" per spec. Tapping opens admin login. */}
+            <button
+              type="button"
+              data-ocid="home.admin_access.button"
+              onClick={() => setShowAdmin(true)}
+              className="bg-vew-sky-light text-vew-sky text-[10px] font-bold px-2 py-0.5 rounded-full hover:bg-vew-sky hover:text-white transition-colors active:scale-95"
+              aria-label="Admin access"
+            >
+              VEW
+            </button>
           </header>
         )}
 
@@ -187,13 +173,6 @@ export default function App() {
             )}
             {activeTab === "favourite" && (
               <FavouriteScreen onDesignClick={handleDesignClick} />
-            )}
-            {activeTab === "customers" && <CustomersScreen />}
-            {activeTab === "contact" && (
-              <ContactScreen onAdminClick={() => setActiveTab("admin")} />
-            )}
-            {activeTab === "admin" && (
-              <AdminScreen onBack={() => setActiveTab("home")} />
             )}
           </main>
         )}

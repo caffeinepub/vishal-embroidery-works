@@ -1,12 +1,4 @@
-import {
-  ChevronRight,
-  Heart,
-  Phone,
-  Scissors,
-  Shield,
-  Sparkles,
-  Users,
-} from "lucide-react";
+import { ChevronRight, Heart, Scissors, Sparkles } from "lucide-react";
 import { type ElementType, useRef } from "react";
 import type { Design } from "../../backend.d";
 import {
@@ -18,14 +10,7 @@ import { getRecentlyViewed } from "../../lib/recentlyViewed";
 import { getSampleBridal, getSampleTrending } from "../../lib/sampleData";
 import { DesignCard } from "../shared/DesignCard";
 
-type AppTab =
-  | "home"
-  | "embroidery"
-  | "blouse"
-  | "favourite"
-  | "customers"
-  | "contact"
-  | "admin";
+type AppTab = "home" | "embroidery" | "blouse" | "favourite";
 
 interface HomeScreenProps {
   onDesignClick: (design: Design) => void;
@@ -118,30 +103,6 @@ const QUICK_SECTIONS: Array<{
     icon: Scissors,
     color: "bg-blue-50",
     iconColor: "text-blue-500",
-  },
-  {
-    id: "customers",
-    label: "Customers",
-    kannada: "ಗ್ರಾಹಕರು",
-    icon: Users,
-    color: "bg-purple-50",
-    iconColor: "text-purple-500",
-  },
-  {
-    id: "admin",
-    label: "Admin Panel",
-    kannada: "ಅಡ್ಮಿನ್",
-    icon: Shield,
-    color: "bg-amber-50",
-    iconColor: "text-amber-600",
-  },
-  {
-    id: "contact",
-    label: "Contact",
-    kannada: "ಸಂಪರ್ಕ",
-    icon: Phone,
-    color: "bg-green-50",
-    iconColor: "text-green-500",
   },
   {
     id: "favourite",
