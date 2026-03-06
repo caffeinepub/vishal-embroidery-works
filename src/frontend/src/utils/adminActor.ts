@@ -107,6 +107,16 @@ function resolveAdminToken(): string | null {
 }
 
 /**
+ * isInitialized — true once the session promise has resolved (successfully or
+ * with an anonymous fallback). Components can read this synchronously to
+ * decide whether it is safe to render config-dependent UI.
+ *
+ * Start as false; set to true inside initAdminSession() after the actor is ready.
+ * Reset to false when resetAdminActor() is called (logout).
+ */
+export let isInitialized = false;
+
+/**
  * Module-level singleton promise for the admin-authenticated session.
  *
  * The init sequence is strictly sequential (async/await):
@@ -123,10 +133,15 @@ let adminSessionPromise: Promise<AdminSession> | null = null;
 export function getAdminSession(): Promise<AdminSession> {
   if (!adminSessionPromise) {
     adminSessionPromise = initAdminSession();
+    // On success: mark as initialized
+    adminSessionPromise.then(() => {
+      isInitialized = true;
+    });
     // Reset on failure so the next call gets a fresh attempt
     adminSessionPromise.catch((err) => {
       console.error("[AdminAuth] Session initialisation failed:", err);
       adminSessionPromise = null;
+      isInitialized = false;
     });
   }
   return adminSessionPromise;
@@ -156,11 +171,17 @@ async function initAdminSession(): Promise<AdminSession> {
     );
   }
 
+  // Guard against the "Cannot read properties of undefined (reading 'config')"
+  // crash. This happens when createActorWithConfig() returns null/undefined
+  // because the canister configuration has not loaded yet. By throwing here
+  // with a readable message we ensure no downstream code tries to read .config
+  // on an undefined value.
   if (!actor) {
     console.groupEnd();
     throw new Error(
-      "[AdminAuth] createActorWithConfig() returned null/undefined. " +
-        "The canister config may not be available yet — please refresh the page.",
+      "[AdminAuth] createActorWithConfig() returned null/undefined — the canister " +
+        "configuration (config) is not available yet. The app will retry automatically. " +
+        "If this persists, open the app via the Caffeine admin link and refresh the page.",
     );
   }
 
@@ -233,4 +254,5 @@ export async function getAdminActor(): Promise<backendInterface> {
  */
 export function resetAdminActor(): void {
   adminSessionPromise = null;
+  isInitialized = false;
 }

@@ -1348,9 +1348,16 @@ export function AdminScreen({ onBack }: { onBack: () => void }) {
 
   // Kick off session init as soon as the user is logged in.
   // initSession() is idempotent — safe to call multiple times.
+  // This is the single point that triggers the sequential init:
+  //   1. bootstrapAdminToken() in main.tsx already captured the token
+  //   2. initSession() calls getAdminSession() → createActorWithConfig() (awaited)
+  //   3. Only after config resolves does the session become "ready"
+  //   4. The loading gate below prevents ANY dashboard render until status === "ready"
   useEffect(() => {
     if (loggedInLocal) {
-      initSession();
+      initSession().catch((e) =>
+        console.error("[AdminScreen] initSession failed:", e),
+      );
     }
   }, [loggedInLocal, initSession]);
 
@@ -1383,13 +1390,57 @@ export function AdminScreen({ onBack }: { onBack: () => void }) {
     );
   }
 
-  // Logged in but session still initialising → show loading gate
-  // This prevents "Cannot read properties of undefined (reading 'config')"
-  // that occurs when mutations fire before createActorWithConfig() resolves.
+  // Logged in but session still initialising OR failed → show loading/error gate.
+  //
+  // CRITICAL: Do NOT render the dashboard or any component that reads `config`
+  // (useCreateDesign, useAllDesigns, CloudinaryImageUploader, etc.) until
+  // sessionStatus === "ready". Rendering those components before
+  // createActorWithConfig() resolves causes:
+  //   "Cannot read properties of undefined (reading 'config')"
+  //
+  // The Zustand store sets status to "ready" only after initAdminSession()
+  // has successfully awaited createActorWithConfig().
   if (sessionStatus === "idle" || sessionStatus === "loading") {
     return (
       <div className="flex-1 flex flex-col">
         <AdminSessionLoadingGate />
+      </div>
+    );
+  }
+
+  // Session init threw — show the error clearly instead of crashing silently.
+  // The user can refresh or re-open the admin link to retry.
+  if (sessionStatus === "error") {
+    const { error: sessionError } = useAdminSessionStore.getState();
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center gap-4 px-6 py-12">
+        <div className="w-14 h-14 rounded-2xl bg-red-50 flex items-center justify-center">
+          <AlertCircle className="w-7 h-7 text-red-500" />
+        </div>
+        <div className="text-center">
+          <p className="text-sm font-semibold text-vew-navy">
+            Admin Panel Unavailable
+          </p>
+          <p className="text-[11px] text-muted-foreground mt-1 leading-snug">
+            The app configuration could not be loaded. Please open the app via
+            the Caffeine admin link and refresh the page.
+          </p>
+          {sessionError && (
+            <p className="text-[10px] text-red-500 mt-2 font-mono break-all bg-red-50 rounded-lg p-2">
+              {sessionError.substring(0, 200)}
+            </p>
+          )}
+        </div>
+        <Button
+          variant="outline"
+          className="rounded-xl text-xs"
+          onClick={() => {
+            clearSession();
+            setLoggedInLocal(false);
+          }}
+        >
+          Back to Login
+        </Button>
       </div>
     );
   }
