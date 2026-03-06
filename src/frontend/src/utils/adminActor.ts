@@ -43,30 +43,84 @@ function resolveAdminToken(): string | null {
 let sessionPromise: Promise<AdminSession> | null = null;
 
 async function initAdminSession(): Promise<AdminSession> {
-  // Step 1: read token from sessionStorage (already captured by bootstrap in main.tsx)
-  const adminToken = resolveAdminToken();
-
-  // Step 2: attempt to create the actor — single try, then fallback
-  let actor: backendInterface | null = null;
   try {
-    const rawActor = await createActorWithConfig();
-    if (rawActor) {
-      actor = rawActor as unknown as backendInterface;
+    // Step 1: read token from sessionStorage (already captured by bootstrap in main.tsx)
+    const adminToken = resolveAdminToken();
+
+    // Step 2: attempt to create the actor — single try, then fallback
+    let actor: backendInterface | null = null;
+    try {
+      const rawActor = await createActorWithConfig();
+      if (rawActor) {
+        actor = rawActor as unknown as backendInterface;
+      }
+    } catch (err) {
+      console.warn(
+        "[AdminActor] createActorWithConfig() failed — using fallback config.",
+        err instanceof Error ? err.message : String(err),
+      );
     }
+
+    // If actor is unavailable, return a safe fallback session
+    if (!actor) {
+      console.warn(
+        "[AdminActor] Canister unavailable — returning fallback session. " +
+          "Cloudinary uploads work; ICP operations will not function until the canister is reachable.",
+      );
+      return {
+        actor: {} as backendInterface,
+        agent: null,
+        isAnonymous: true,
+        canisterAvailable: false,
+      };
+    }
+
+    // Step 3: authenticate with the canister using the token (if available)
+    // Cast to any to call the Caffeine-injected method not declared in backendInterface
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const actorAny = actor as any;
+
+    if (adminToken) {
+      try {
+        await actorAny._initializeAccessControlWithSecret(adminToken);
+      } catch (err) {
+        // Non-fatal — canister may already be initialised
+        console.info(
+          "[AdminActor] _initializeAccessControlWithSecret threw (may be benign):",
+          err instanceof Error ? err.message : String(err),
+        );
+      }
+
+      // Extract the agent for storage client use
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const agent = Actor.agentOf(actor as any) as unknown as HttpAgent | null;
+      return {
+        actor,
+        agent,
+        isAnonymous: false,
+        canisterAvailable: true,
+      };
+    }
+
+    // No token — anonymous session
+    try {
+      await actorAny._initializeAccessControlWithSecret("");
+    } catch {
+      // Expected for anonymous callers
+    }
+
+    return {
+      actor,
+      agent: null,
+      isAnonymous: true,
+      canisterAvailable: true,
+    };
   } catch (err) {
-    console.warn(
-      "[AdminActor] createActorWithConfig() failed — using fallback config.",
+    // Absolute safety net — never crash the app
+    console.error(
+      "[AdminActor] initAdminSession encountered an unhandled error:",
       err instanceof Error ? err.message : String(err),
     );
-  }
-
-  // If actor is unavailable, return a safe fallback session
-  if (!actor) {
-    console.warn(
-      "[AdminActor] Canister unavailable — returning fallback session. " +
-        "Cloudinary uploads work; ICP operations will not function until the canister is reachable.",
-    );
-    // Return a minimal stub so the app does not crash
     return {
       actor: {} as backendInterface,
       agent: null,
@@ -74,47 +128,6 @@ async function initAdminSession(): Promise<AdminSession> {
       canisterAvailable: false,
     };
   }
-
-  // Step 3: authenticate with the canister using the token (if available)
-  // Cast to any to call the Caffeine-injected method not declared in backendInterface
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const actorAny = actor as any;
-
-  if (adminToken) {
-    try {
-      await actorAny._initializeAccessControlWithSecret(adminToken);
-    } catch (err) {
-      // Non-fatal — canister may already be initialised
-      console.info(
-        "[AdminActor] _initializeAccessControlWithSecret threw (may be benign):",
-        err instanceof Error ? err.message : String(err),
-      );
-    }
-
-    // Extract the agent for storage client use
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const agent = Actor.agentOf(actor as any) as unknown as HttpAgent | null;
-    return {
-      actor,
-      agent,
-      isAnonymous: false,
-      canisterAvailable: true,
-    };
-  }
-
-  // No token — anonymous session
-  try {
-    await actorAny._initializeAccessControlWithSecret("");
-  } catch {
-    // Expected for anonymous callers
-  }
-
-  return {
-    actor,
-    agent: null,
-    isAnonymous: true,
-    canisterAvailable: true,
-  };
 }
 
 export function getAdminSession(): Promise<AdminSession> {
