@@ -1,6 +1,6 @@
 import { Toaster } from "@/components/ui/sonner";
 import { Heart, Home, Scissors, Sparkles, Users } from "lucide-react";
-import { useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import type { Design } from "./backend.d";
 
 import { AdminScreen } from "./components/screens/AdminScreen";
@@ -52,13 +52,53 @@ const NAV_ITEMS: {
   },
 ];
 
+// Long-press duration in ms before admin panel opens
+const LONG_PRESS_MS = 5000;
+
 export default function App() {
   const [showSplash, setShowSplash] = useState(true);
   const [activeTab, setActiveTab] = useState<Tab>("home");
   const [selectedDesign, setSelectedDesign] = useState<Design | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
-  // Hidden admin panel — opened via VEW button in top-left of Home header
+  // Hidden admin panel — opened only via 5-second long press on VEW button
   const [showAdmin, setShowAdmin] = useState(false);
+
+  // Long-press state for VEW button
+  const [isPressingVEW, setIsPressingVEW] = useState(false);
+  const [pressProgress, setPressProgress] = useState(0); // 0-100
+  const pressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const progressIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
+    null,
+  );
+  const pressStartRef = useRef<number>(0);
+
+  const startLongPress = useCallback(() => {
+    setIsPressingVEW(true);
+    setPressProgress(0);
+    pressStartRef.current = Date.now();
+
+    // Animate progress
+    progressIntervalRef.current = setInterval(() => {
+      const elapsed = Date.now() - pressStartRef.current;
+      const pct = Math.min((elapsed / LONG_PRESS_MS) * 100, 100);
+      setPressProgress(pct);
+    }, 50);
+
+    // Fire after LONG_PRESS_MS
+    pressTimerRef.current = setTimeout(() => {
+      clearInterval(progressIntervalRef.current!);
+      setIsPressingVEW(false);
+      setPressProgress(0);
+      setShowAdmin(true);
+    }, LONG_PRESS_MS);
+  }, []);
+
+  const cancelLongPress = useCallback(() => {
+    if (pressTimerRef.current) clearTimeout(pressTimerRef.current);
+    if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
+    setIsPressingVEW(false);
+    setPressProgress(0);
+  }, []);
 
   const handleDesignClick = (design: Design) => {
     setSelectedDesign(design);
@@ -151,16 +191,34 @@ export default function App() {
               </div>
             </div>
 
-            {/* VEW button — hidden admin access point (top-left area of header) */}
-            {/* Label is kept exactly as "VEW" per spec. Tapping opens admin login. */}
+            {/* VEW button — hidden admin access point.
+                Long press for 5 seconds to open admin login.
+                Normal tap does nothing visible to users. */}
             <button
               type="button"
               data-ocid="home.admin_access.button"
-              onClick={() => setShowAdmin(true)}
-              className="bg-vew-sky-light text-vew-sky text-[10px] font-bold px-2 py-0.5 rounded-full hover:bg-vew-sky hover:text-white transition-colors active:scale-95"
-              aria-label="Admin access"
+              onMouseDown={startLongPress}
+              onMouseUp={cancelLongPress}
+              onMouseLeave={cancelLongPress}
+              onTouchStart={startLongPress}
+              onTouchEnd={cancelLongPress}
+              onTouchCancel={cancelLongPress}
+              onContextMenu={(e) => e.preventDefault()}
+              className="relative bg-vew-sky-light text-vew-sky text-[10px] font-bold px-2 py-0.5 rounded-full overflow-hidden select-none"
+              aria-label="VEW"
+              style={{ WebkitUserSelect: "none" }}
             >
-              VEW
+              {/* Progress ring fill while pressing */}
+              {isPressingVEW && (
+                <span
+                  className="absolute inset-0 bg-vew-sky/30 rounded-full"
+                  style={{
+                    width: `${pressProgress}%`,
+                    transition: "width 50ms linear",
+                  }}
+                />
+              )}
+              <span className="relative z-10">VEW</span>
             </button>
           </header>
         )}
