@@ -158,53 +158,70 @@ function clearParamFromHash(paramName: string): void {
 }
 
 /**
- * Gets a secret from the URL hash fragment only (more secure than query params)
- * Hash fragments aren't sent to servers or logged in access logs
- * The hash is immediately cleared from the URL after extraction to prevent history leakage
+ * Gets a secret from the URL — checks BOTH query string and hash fragment.
  *
- * Usage: https://yourapp.com/#secret=xxx
+ * IMPORTANT: Caffeine injects `caffeineAdminToken` as a QUERY STRING parameter
+ * (?caffeineAdminToken=...), NOT in the hash. Previous versions only checked the
+ * hash, which caused the token to silently return null every time.
+ *
+ * Priority order:
+ *  1. sessionStorage (post-redirect recovery)
+ *  2. URL query string (?caffeineAdminToken=...) — Caffeine's injection method
+ *  3. URL hash fragment (#caffeineAdminToken=...) — fallback for older deployments
  *
  * @param paramName - The name of the secret parameter
- * @returns The secret value if found (from hash or session), null otherwise
+ * @returns The secret value if found (from session or URL), null otherwise
  */
 export function getSecretFromHash(paramName: string): string | null {
-  // Check session first to avoid unnecessary URL manipulation
+  // 1. Check session first to avoid unnecessary URL manipulation
   const existingSecret = getSessionParameter(paramName);
   if (existingSecret !== null) {
     return existingSecret;
   }
 
-  // Try to extract from hash
+  // 2. Try the URL query string (?paramName=...) — PRIMARY Caffeine injection method
+  const queryParams = new URLSearchParams(window.location.search);
+  const fromQuery = queryParams.get(paramName);
+  if (fromQuery) {
+    storeSessionParameter(paramName, fromQuery);
+    return fromQuery;
+  }
+
+  // 3. Try to extract from hash fragment (#paramName=... or #/?paramName=...)
   const hash = window.location.hash;
   if (!hash || hash.length <= 1) {
     return null;
   }
 
-  // Remove the leading #
-  const hashContent = hash.substring(1);
-  const params = new URLSearchParams(hashContent);
-  const secret = params.get(paramName);
-
-  if (secret) {
-    // Store in session for persistence
-    storeSessionParameter(paramName, secret);
-    // Immediately clear the secret parameter from URL to avoid history leakage
+  // Try bare hash: #paramName=...
+  const bareHashParams = new URLSearchParams(hash.substring(1));
+  const fromBareHash = bareHashParams.get(paramName);
+  if (fromBareHash) {
+    storeSessionParameter(paramName, fromBareHash);
     clearParamFromHash(paramName);
-    return secret;
+    return fromBareHash;
+  }
+
+  // Try hash-router format: #/?paramName=... or #/path?paramName=...
+  const queryIndex = hash.indexOf("?");
+  if (queryIndex !== -1) {
+    const hashQueryParams = new URLSearchParams(hash.substring(queryIndex + 1));
+    const fromHashQuery = hashQueryParams.get(paramName);
+    if (fromHashQuery) {
+      storeSessionParameter(paramName, fromHashQuery);
+      clearParamFromHash(paramName);
+      return fromHashQuery;
+    }
   }
 
   return null;
 }
 
 /**
- * Gets a secret parameter with fallback chain: hash -> sessionStorage
- * This is the recommended way to handle sensitive parameters like admin tokens
+ * Gets a secret parameter with fallback chain: query string -> hash -> sessionStorage
+ * This is the recommended way to handle sensitive parameters like admin tokens.
  *
- * Security benefits over regular URL params:
- * - Hash fragments are not sent to the server
- * - Not logged in server access logs
- * - Not sent in HTTP Referer headers
- * - Automatically cleared from URL after extraction
+ * Works correctly with Caffeine's token injection which uses query string params.
  *
  * @param paramName - The name of the secret parameter
  * @returns The secret value if found, null otherwise

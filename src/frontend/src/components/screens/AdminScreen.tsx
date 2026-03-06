@@ -291,8 +291,28 @@ function AdminLogin({
     }
   };
 
-  const initializeGoogle = () => {
-    if (!window.google?.accounts?.id) return;
+  const initializeGoogle = (retryCount = 0) => {
+    // Defensive guard — check every level of the GIS object chain before calling.
+    // "Cannot read properties of undefined (reading 'config')" is thrown when
+    // window.google exists but accounts.id is partially initialised. The retry
+    // loop handles the race condition where the script fires onload before the
+    // id object has been fully populated.
+    if (
+      !window.google ||
+      !window.google.accounts ||
+      !window.google.accounts.id ||
+      typeof window.google.accounts.id.initialize !== "function"
+    ) {
+      if (retryCount < 5) {
+        // Retry up to 5 times with 500ms delay — handles partial GIS load state
+        setTimeout(() => initializeGoogle(retryCount + 1), 500);
+      } else {
+        console.warn(
+          "[GoogleAuth] Google Identity Services object not fully available after retries.",
+        );
+      }
+      return;
+    }
     try {
       window.google.accounts.id.initialize({
         client_id: GOOGLE_CLIENT_ID,
@@ -310,12 +330,17 @@ function AdminLogin({
           shape: "rectangular",
         });
       }
+      console.info(
+        "[GoogleAuth] ✅ Google Identity Services initialized successfully.",
+      );
     } catch (err) {
       console.error(
         "[GoogleAuth] Failed to initialize Google Identity Services:",
         err,
-        "Client ID in use:",
+        "\nClient ID in use:",
         GOOGLE_CLIENT_ID,
+        "\nNote: Ensure this domain is listed in 'Authorized JavaScript origins' in Google Cloud Console:",
+        window.location.origin,
       );
     }
   };
@@ -329,7 +354,8 @@ function AdminLogin({
     );
     if (existingScript) {
       setGoogleScriptLoaded(true);
-      initializeGoogle();
+      // Give GIS a tick to finish initializing even if the script tag already exists
+      setTimeout(() => initializeGoogle(), 100);
       return;
     }
 
@@ -339,10 +365,13 @@ function AdminLogin({
     script.defer = true;
     script.onload = () => {
       setGoogleScriptLoaded(true);
-      initializeGoogle();
+      // Small delay to let the GIS library complete its internal setup
+      setTimeout(() => initializeGoogle(), 100);
     };
     script.onerror = () => {
-      console.error("Failed to load Google Identity Services script");
+      console.error(
+        "Failed to load Google Identity Services script. Check internet connection.",
+      );
     };
     document.head.appendChild(script);
   }, [isPlaceholderClientId]);

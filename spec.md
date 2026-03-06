@@ -2,68 +2,41 @@
 
 ## Current State
 
-- Full-stack app: Motoko backend + React/TypeScript frontend
-- Bottom nav has 7 tabs: Home, Embroidery, Blouse, Favourite, Customers, Contact, Admin
-- Home screen has a 3x2 quick-access grid with: Embroidery, Blouse, Customers, Admin Panel, Contact, Favourites
-- AdminScreen is accessed via the "Admin" tab in bottom nav or from Home quick-access cards
-- Admin panel has 3 internal tabs: Designs, Upload, Customers
-- Google Client ID is set to `1002480004594-1h58q9aikcgelgeae3gl28pijm9uj5sl.apps.googleusercontent.com` (most recent version)
-- Admin whitelist contains `akhileshsworks@gmail.com`
-- `adminActor.ts` uses a 3-step token fallback (sessionStorage → URL query → URL hash)
-- `main.tsx` does NOT currently have a bootstrap token capture function
-- Image upload uses `imageHandler.ts` with the shared admin session agent
-- Upload pipeline: validate → compress → get admin session → create StorageClient → upload
+The app is a full-stack embroidery shop catalog built on ICP (Motoko backend + React frontend). It has:
+- 5-tab bottom nav: Home, Embroidery, Blouse, Favourite, Customers
+- Hidden admin access via "VEW" button on Home screen header
+- Admin panel with 4 tabs: Analytics, Update Design, Design Upload, Bulk Upload, Customer
+- Google OAuth login + username/password login for admin
+- Image upload pipeline via Caffeine blob storage
+- Design management, customer management, order tracking
+
+Current broken state:
+1. `main.tsx` was never updated to include `bootstrapAdminToken()` — the token capture that was referenced in code comments was never actually implemented. This means the `caffeineAdminToken` from the URL is never saved to `sessionStorage` before React renders.
+2. `getSecretParameter()` in `urlParams.ts` only checks the URL **hash fragment** (`#caffeineAdminToken=...`) but Caffeine injects the token as a **query string** parameter (`?caffeineAdminToken=...`). This means token lookup silently returns null.
+3. `useActor.ts` uses `getSecretParameter()` which also misses the query string token.
+4. `adminActor.ts` has `resolveAdminToken()` which does check the query string, but since the bootstrap in `main.tsx` is missing, after any Google OAuth redirect the token is gone from the URL and not in sessionStorage either.
+5. `AdminScreen.tsx` `initializeGoogle()` can crash with "Cannot read properties of undefined (reading 'config')" if `window.google.accounts.id.initialize()` is called before the script is fully loaded or if the GIS script loads in a partially initialized state.
 
 ## Requested Changes (Diff)
 
 ### Add
-
-- `bootstrapAdminToken()` function in `main.tsx` that runs before React renders, reads the `caffeineAdminToken` from URL query string and saves it to sessionStorage immediately (this is the critical fix — must run before any OAuth redirect)
-- VEW button at top-left of the Home screen header that opens the Admin Panel login modal/overlay (hidden admin access point)
-- Admin panel 4th section: split the current "Upload" tab into "Design Upload" (single design) and "Bulk Upload" (bulk), keeping "Update Design" (designs list) and "Customer" as tabs — total 4 tabs
-- Backend health check before admin actions: verify canister is responding before showing admin dashboard
+- `bootstrapAdminToken()` function in `main.tsx` that runs before ReactDOM.createRoot(), saves `caffeineAdminToken` from URL query string AND hash fragment to sessionStorage immediately
+- Defensive null guard in `AdminScreen.tsx` `initializeGoogle()` around `window.google?.accounts?.id?.initialize()` to prevent the undefined config crash
+- Add an `initTimeout` retry mechanism in `AdminScreen.tsx` so if the Google script loads but `accounts.id` is temporarily undefined, it retries initialization up to 3 times with 500ms delay
 
 ### Modify
-
-- `main.tsx`: add `bootstrapAdminToken()` self-executing function that captures token from URL to sessionStorage before React renders
-- `App.tsx`: 
-  - Remove "customers" and "contact" tabs from bottom nav (keep Home, Embroidery, Blouse, Favourite only — 4 tabs)
-  - Remove "admin" tab from bottom nav
-  - Change the VEW badge/button in Home header to be a tappable button that opens Admin Panel
-  - The Home header currently has a `<span>` labeled "VEW" — convert it to a `<button>` that navigates to admin
-- `HomeScreen.tsx`: Remove "Customers", "Admin Panel", and "Contact" cards from the Quick Access grid (keep only Embroidery, Blouse, Favourites — 3 cards)
-- `AdminScreen.tsx`: 
-  - Rename existing tabs: "designs" → "Update Design", "upload" tab split into two: "Design Upload" + "Bulk Upload", "customers" → "Customer"
-  - Total 4 tabs: Update Design, Design Upload, Bulk Upload, Customer
-  - Google Client ID already correct — confirm it stays as-is
-  - Admin login form works as modal/overlay opened by VEW button (not a separate tab)
-- `adminActor.ts`: Ensure the singleton is reset on first failed init so it retries cleanly; remove the pattern where `adminSessionPromise.catch` clears the promise (causes retry storms) — keep it but make sure it only clears on definitive auth errors, not transient network errors
+- `main.tsx`: Add `bootstrapAdminToken()` call before ReactDOM.createRoot() — this is the single most critical fix
+- `urlParams.ts` `getSecretParameter()`: Also check URL query string (not just hash), so it works for both Caffeine's query injection and hash injection
+- `useActor.ts`: Use `getPersistedUrlParameter` or inline query string lookup instead of `getSecretParameter` to ensure the token is found in query string
+- `adminActor.ts` `resolveAdminToken()`: Already correct but add defensive check — if sessionStorage has the token, return early without logging errors
 
 ### Remove
-
-- "Customers" tab from bottom nav
-- "Contact" tab from bottom nav  
-- "Admin" tab from bottom nav
-- "Customers", "Admin Panel", "Contact" quick-access cards from Home screen (keep Embroidery, Blouse, Favourites)
+- Nothing to remove
 
 ## Implementation Plan
 
-1. **`main.tsx`** — Add `bootstrapAdminToken()` function that runs synchronously before `ReactDOM.createRoot`. It reads `caffeineAdminToken` from `window.location.search` and saves to `sessionStorage` with key `vew_caffeine_admin_token`. This ensures the token survives any OAuth redirect.
-
-2. **`App.tsx`** — 
-   - Reduce `NAV_ITEMS` to 4 items: Home, Embroidery, Blouse, Favourite (remove Customers, Contact, Admin)
-   - Remove `Tab` union members for `customers`, `contact`, `admin` — add back `admin` as a state flag, not a tab
-   - Add `showAdmin` state boolean
-   - In the Home header, convert the `<span className="...">VEW</span>` badge to a `<button>` that sets `showAdmin = true`
-   - Render `AdminScreen` as an overlay (full-screen modal) when `showAdmin === true`, with `onBack` closing it
-
-3. **`HomeScreen.tsx`** — Remove "Customers", "Admin Panel", "Contact" from `QUICK_SECTIONS`. Keep: Embroidery, Blouse, Favourites (3 cards). Pass `onNavigate` calls for those 3 only.
-
-4. **`AdminScreen.tsx`** — 
-   - Update `AdminTab` type: `"update_design" | "design_upload" | "bulk_upload" | "customer"`
-   - Map existing "designs" content → "update_design" tab
-   - Map existing `UnifiedUploadPanel` → split into two separate panels: single design form goes to "design_upload" tab, bulk upload UI goes to "bulk_upload" tab
-   - Map existing "customers" content → "customer" tab
-   - Tab labels: "Update Design / ಡಿಸೈನ್ ಅಪ್ಡೇಟ್", "Design Upload / ಡಿಸೈನ್ ಅಪ್ಲೋಡ್", "Bulk Upload / ಬಲ್ಕ್ ಅಪ್ಲೋಡ್", "Customer / ಗ್ರಾಹಕ"
-
-5. **Canister health check** — Before showing the admin dashboard after login, call a lightweight read method (e.g., `getNextDesignCode("")` or `getAllDesigns()`) to verify the canister is alive. If it fails, show a "Backend unavailable — the canister may be restarting" banner while still allowing login.
+1. Fix `main.tsx`: Add `bootstrapAdminToken()` as an IIFE before React renders. It reads `caffeineAdminToken` from both `window.location.search` (query string) and `window.location.hash` (hash fragment), and immediately saves to sessionStorage.
+2. Fix `urlParams.ts` `getSecretParameter()`: Change to check query string first, then hash fragment (matching Caffeine's actual injection method).
+3. Fix `useActor.ts`: Use `new URLSearchParams(window.location.search).get('caffeineAdminToken')` or `getPersistedUrlParameter` so the actor initialization has the token.
+4. Fix `AdminScreen.tsx`: Wrap `window.google.accounts.id.initialize(...)` in a proper null guard for each property in the chain; add retry logic if GIS object is partially loaded.
+5. No backend changes needed — the Motoko canister is fine; the issues are all in frontend auth/token handling.
