@@ -5,6 +5,7 @@ import {
   MapPin,
   MessageCircle,
   Phone,
+  Shield,
 } from "lucide-react";
 
 interface ContactScreenProps {
@@ -152,15 +153,16 @@ export function ContactScreen({ onAdminClick }: ContactScreenProps) {
         </div>
       </div>
 
-      {/* Admin Link (hidden at bottom) */}
-      <div className="px-4">
+      {/* Admin Panel Link */}
+      <div className="px-4 mb-3">
         <button
           type="button"
           data-ocid="contact.admin_link"
           onClick={onAdminClick}
-          className="w-full text-center text-xs text-muted-foreground/40 py-2 hover:text-vew-sky transition-colors"
+          className="w-full flex items-center justify-center gap-2 text-xs text-muted-foreground/60 py-2.5 px-4 rounded-xl border border-border/40 hover:text-vew-sky hover:border-vew-sky/40 hover:bg-vew-sky-light/20 transition-all"
         >
-          Admin Panel
+          <Shield className="w-3.5 h-3.5" />
+          Admin Panel / ಅಡ್ಮಿನ್ ಪ್ಯಾನಲ್
         </button>
       </div>
 

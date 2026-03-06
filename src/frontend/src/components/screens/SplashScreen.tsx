@@ -46,25 +46,25 @@ export function SplashScreen({ onComplete }: SplashScreenProps) {
           >
             {/* VEW Logo Image */}
             <div className="w-28 h-28 rounded-3xl overflow-hidden shadow-lg shadow-vew-sky/20 flex items-center justify-center bg-gradient-to-br from-white to-vew-sky-light border border-vew-sky/20 relative">
+              {/* Always-visible fallback — rendered first so it shows
+                  immediately while the image loads or if it errors */}
+              <div className="absolute inset-0 flex items-center justify-center bg-vew-sky rounded-3xl z-0">
+                <span className="text-white text-4xl font-extrabold tracking-tight select-none">
+                  VEW
+                </span>
+              </div>
+              {/* Logo image on top (z-10) — covers the VEW badge when loaded */}
               {!imgError && (
                 <img
                   src="/assets/generated/vew-logo.dim_200x200.png"
                   alt="VEW Logo"
-                  className="w-full h-full object-contain p-2"
+                  className="w-full h-full object-contain p-2 absolute inset-0 z-10"
                   onLoad={() => setLogoReady(true)}
                   onError={() => {
                     setImgError(true);
                     setLogoReady(true);
                   }}
                 />
-              )}
-              {/* Fallback badge shown when image fails to load */}
-              {imgError && (
-                <div className="absolute inset-0 flex items-center justify-center bg-vew-sky rounded-3xl">
-                  <span className="text-white text-4xl font-extrabold tracking-tight">
-                    VEW
-                  </span>
-                </div>
               )}
             </div>
           </motion.div>

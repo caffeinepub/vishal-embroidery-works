@@ -1,7 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Design, Measurement } from "../backend.d";
-import { createActorWithConfig } from "../config";
-import { getSecretParameter } from "../utils/urlParams";
+import { getAdminActor } from "../utils/adminActor";
 import { useActor } from "./useActor";
 
 // ─── Design Queries ───────────────────────────────────────────────────────────
@@ -80,15 +79,9 @@ export function useAllMeasurements() {
   });
 }
 
-// Helper: create an admin-authenticated actor using the Caffeine admin token
-async function createAdminActor() {
-  const actor = await createActorWithConfig();
-  const adminToken = getSecretParameter("caffeineAdminToken") || "";
-  if (adminToken) {
-    await actor._initializeAccessControlWithSecret(adminToken);
-  }
-  return actor;
-}
+// Use the module-level singleton admin actor so that
+// _initializeAccessControlWithSecret is only called ONCE per page load.
+const createAdminActor = getAdminActor;
 
 // ─── Design Code Preview ──────────────────────────────────────────────────────
 
@@ -137,40 +130,43 @@ export function useCreateDesignBulk() {
   return useMutation({
     mutationFn: async (
       entries: Array<{ imageUrl: string; category: string }>,
-    ): Promise<{ savedCount: number; skippedCount: number }> => {
-      // Always create a fresh actor and initialize it with the admin token
-      // so that createDesignBulk (which requires admin permission) succeeds
-      // regardless of whether the user is authenticated via Internet Identity.
-      const actor = await createActorWithConfig();
-      const adminToken = getSecretParameter("caffeineAdminToken") || "";
-      if (adminToken) {
-        await actor._initializeAccessControlWithSecret(adminToken);
-      }
+    ): Promise<{
+      savedCount: number;
+      failedCount: number;
+      errors: string[];
+    }> => {
+      // Reuse the singleton admin actor -- no re-initialization needed
+      const actor = await getAdminActor();
 
-      // Split into chunks of 20 to stay well within ICP message size limits
-      const CHUNK_SIZE = 20;
+      // Chunk size of 10 keeps each canister call well within ICP message limits
+      // and reduces the blast radius of a single chunk failure.
+      const CHUNK_SIZE = 10;
       let totalSaved = 0;
+      const errors: string[] = [];
 
       for (let i = 0; i < entries.length; i += CHUNK_SIZE) {
         const chunk = entries.slice(i, i + CHUNK_SIZE);
+        const chunkNum = Math.floor(i / CHUNK_SIZE) + 1;
         try {
           const saved = await actor.createDesignBulk(chunk);
           totalSaved += Number(saved);
-        } catch (err) {
-          // Log chunk error but continue processing remaining chunks
-          console.error(
-            `Bulk save chunk ${Math.floor(i / CHUNK_SIZE) + 1} failed:`,
-            err,
+          console.info(
+            `[BulkSave] Chunk ${chunkNum}: saved ${Number(saved)} of ${chunk.length}`,
           );
+        } catch (err) {
+          // Preserve the full error message so admins can diagnose the failure
+          const reason = err instanceof Error ? err.message : String(err);
+          console.error(`[BulkSave] Chunk ${chunkNum} failed:`, reason);
+          errors.push(`Chunk ${chunkNum} (${chunk.length} items): ${reason}`);
         }
         // Small delay between chunks to avoid rate limiting
         if (i + CHUNK_SIZE < entries.length) {
-          await new Promise((r) => setTimeout(r, 150));
+          await new Promise((r) => setTimeout(r, 200));
         }
       }
 
-      const skippedCount = entries.length - totalSaved;
-      return { savedCount: totalSaved, skippedCount };
+      const failedCount = entries.length - totalSaved;
+      return { savedCount: totalSaved, failedCount, errors };
     },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["designs"] });
@@ -259,7 +255,6 @@ export function useSetBridal() {
 // ─── Measurement Mutations ───────────────────────────────────────────────────
 
 export function useCreateMeasurement() {
-  const { actor } = useActor();
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (args: {
@@ -272,9 +267,9 @@ export function useCreateMeasurement() {
       neck: string;
       blouseLength: string;
     }) => {
-      // Use the regular actor if available, otherwise fall back to admin actor
-      const targetActor = actor ?? (await createAdminActor());
-      await targetActor.createMeasurement(
+      // Always use the admin actor so createMeasurement has correct permissions
+      const actor = await getAdminActor();
+      await actor.createMeasurement(
         args.name,
         args.phone,
         args.bust,

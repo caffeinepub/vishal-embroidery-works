@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { Design } from "../../backend.d";
 
 interface DesignCardProps {
@@ -7,6 +8,32 @@ interface DesignCardProps {
   selected?: boolean;
   compareMode?: boolean;
   onToggleCompare?: (id: bigint) => void;
+}
+
+/** Placeholder tile shown when no image URL is present or image fails to load */
+function ImagePlaceholder({ code }: { code: string }) {
+  const initials = code.replace(/[^A-Z0-9-]/gi, "").slice(0, 7);
+  return (
+    <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-vew-sky-light to-vew-sky-light/30 gap-1">
+      <svg
+        aria-hidden="true"
+        width="24"
+        height="24"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        className="text-vew-sky opacity-50"
+      >
+        <rect x="3" y="3" width="18" height="18" rx="3" />
+        <circle cx="8.5" cy="8.5" r="1.5" />
+        <path d="M21 15l-5-5L5 21" />
+      </svg>
+      <span className="text-[8px] font-mono text-vew-sky/60 px-1 text-center leading-tight">
+        {initials}
+      </span>
+    </div>
+  );
 }
 
 export function DesignCard({
@@ -20,6 +47,7 @@ export function DesignCard({
   const firstImage = design.imageUrls?.[0] ?? "";
   const hasMultiple = (design.imageUrls?.length ?? 0) > 1;
   const imageCount = design.imageUrls?.length ?? 0;
+  const [imgError, setImgError] = useState(false);
 
   const handleClick = () => {
     if (compareMode && onToggleCompare) {
@@ -44,7 +72,7 @@ export function DesignCard({
     >
       {/* Image */}
       <div className="relative aspect-square w-full overflow-hidden bg-vew-sky-light/50">
-        {firstImage ? (
+        {firstImage && !imgError ? (
           <img
             src={firstImage}
             alt={design.designCode}
@@ -53,28 +81,10 @@ export function DesignCard({
             decoding="async"
             width={120}
             height={120}
-            onError={(e) => {
-              (e.target as HTMLImageElement).style.display = "none";
-            }}
+            onError={() => setImgError(true)}
           />
         ) : (
-          <div className="w-full h-full flex items-center justify-center">
-            <svg
-              aria-label="No design image"
-              role="img"
-              width="32"
-              height="32"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              className="text-vew-sky opacity-40"
-            >
-              <path d="M12 2L2 7l10 5 10-5-10-5z" />
-              <path d="M2 17l10 5 10-5" />
-              <path d="M2 12l10 5 10-5" />
-            </svg>
-          </div>
+          <ImagePlaceholder code={design.designCode} />
         )}
 
         {/* Badges */}

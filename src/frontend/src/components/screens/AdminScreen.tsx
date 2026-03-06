@@ -42,7 +42,7 @@ import {
   User,
   X,
 } from "lucide-react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { Customer, Design } from "../../backend.d";
 import { useAdminAuth } from "../../hooks/useAdminAuth";
@@ -59,6 +59,7 @@ import {
   useUpdateDesign,
 } from "../../hooks/useQueries";
 import { useUploadImage } from "../../hooks/useUploadImage";
+import { getAdminActor } from "../../utils/adminActor";
 
 const CATEGORIES = [
   "All Embroidery Works",
@@ -89,6 +90,37 @@ const emptyDesignForm: DesignFormData = {
   isTrending: false,
 };
 
+// ─── Google Identity Services type declarations ───────────────────────────────
+
+declare global {
+  interface Window {
+    google?: {
+      accounts: {
+        id: {
+          initialize: (config: {
+            client_id: string;
+            callback: (response: { credential: string }) => void;
+            auto_select?: boolean;
+            cancel_on_tap_outside?: boolean;
+          }) => void;
+          prompt: (
+            notification?: (n: {
+              isNotDisplayed(): boolean;
+              isSkippedMoment(): boolean;
+            }) => void,
+          ) => void;
+          renderButton: (element: HTMLElement, config: object) => void;
+          disableAutoSelect: () => void;
+        };
+      };
+    };
+  }
+}
+
+// Google OAuth Client ID for Vishal Embroidery Works Admin Panel
+const GOOGLE_CLIENT_ID =
+  "1002480004594-gvas36ut7eloj28h9738htb3ec1p0oud.apps.googleusercontent.com";
+
 // ─── Admin Login ──────────────────────────────────────────────────────────────
 
 function AdminLogin({
@@ -98,12 +130,127 @@ function AdminLogin({
   onBack: () => void;
   onLoginSuccess: () => void;
 }) {
-  const { login } = useAdminAuth();
+  const { login, loginWithGoogle } = useAdminAuth();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+  const [googleScriptLoaded, setGoogleScriptLoaded] = useState(false);
+  const googleButtonRef = useRef<HTMLDivElement>(null);
+
+  const isPlaceholderClientId = GOOGLE_CLIENT_ID.startsWith(
+    "YOUR_GOOGLE_CLIENT_ID",
+  );
+
+  const handleGoogleCredential = (response: { credential: string }) => {
+    try {
+      // Decode JWT payload (middle segment)
+      const parts = response.credential.split(".");
+      if (parts.length !== 3) throw new Error("Invalid credential format");
+      const payload = JSON.parse(
+        atob(parts[1].replace(/-/g, "+").replace(/_/g, "/")),
+      ) as { email?: string; name?: string; given_name?: string };
+      const email: string = payload.email ?? "";
+      const name: string = payload.name ?? payload.given_name ?? email;
+
+      if (!email) {
+        setError("Could not retrieve email from Google account.");
+        setIsGoogleLoading(false);
+        return;
+      }
+
+      const authorized = loginWithGoogle(email, name);
+      if (authorized) {
+        getAdminActor().catch((e) =>
+          console.warn("Admin actor pre-warm failed:", e),
+        );
+        onLoginSuccess();
+      } else {
+        setError("Your account is not authorized to access the Admin Panel.");
+      }
+    } catch (err) {
+      console.error("Google credential parse error:", err);
+      setError("Google sign-in failed. Please try again.");
+    } finally {
+      setIsGoogleLoading(false);
+    }
+  };
+
+  const initializeGoogle = () => {
+    if (!window.google?.accounts?.id) return;
+    window.google.accounts.id.initialize({
+      client_id: GOOGLE_CLIENT_ID,
+      callback: handleGoogleCredential,
+      auto_select: false,
+      cancel_on_tap_outside: true,
+    });
+    // Render the hidden Google button (used as fallback for the OAuth popup)
+    if (googleButtonRef.current) {
+      window.google.accounts.id.renderButton(googleButtonRef.current, {
+        theme: "outline",
+        size: "large",
+        width: "100%",
+        text: "continue_with",
+        shape: "rectangular",
+      });
+    }
+  };
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: initializeGoogle is intentionally stable — it reads window.google which is only available after script load, so it must be called from within the effect after confirming the script is ready.
+  useEffect(() => {
+    if (isPlaceholderClientId) return;
+
+    const existingScript = document.querySelector(
+      'script[src="https://accounts.google.com/gsi/client"]',
+    );
+    if (existingScript) {
+      setGoogleScriptLoaded(true);
+      initializeGoogle();
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.src = "https://accounts.google.com/gsi/client";
+    script.async = true;
+    script.defer = true;
+    script.onload = () => {
+      setGoogleScriptLoaded(true);
+      initializeGoogle();
+    };
+    script.onerror = () => {
+      console.error("Failed to load Google Identity Services script");
+    };
+    document.head.appendChild(script);
+  }, [isPlaceholderClientId]);
+
+  const handleGoogleLogin = () => {
+    if (isPlaceholderClientId) {
+      setError(
+        "Google login requires configuration. Please set up a Google OAuth Client ID in Google Cloud Console, then add it to the GOOGLE_CLIENT_ID constant in AdminScreen.tsx.",
+      );
+      return;
+    }
+    if (!window.google?.accounts?.id) {
+      setError(
+        "Google Identity Services not loaded. Check your internet connection.",
+      );
+      return;
+    }
+    setError("");
+    setIsGoogleLoading(true);
+    window.google.accounts.id.prompt((notification) => {
+      if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
+        setIsGoogleLoading(false);
+        // Fallback: click the hidden rendered Google button
+        const btn = googleButtonRef.current?.querySelector(
+          "div[role='button']",
+        ) as HTMLElement | null;
+        btn?.click();
+      }
+    });
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -117,6 +264,11 @@ function AdminLogin({
     const success = login(username, password);
     setIsLoading(false);
     if (success) {
+      // Pre-warm the singleton admin actor in the background so it's ready
+      // before the admin attempts their first upload or design save.
+      getAdminActor().catch((e) =>
+        console.warn("Admin actor pre-warm failed:", e),
+      );
       onLoginSuccess();
     } else {
       setError("Invalid username or password");
@@ -152,7 +304,7 @@ function AdminLogin({
             }}
             autoComplete="username"
             className="pl-9 h-11 rounded-xl text-sm"
-            disabled={isLoading}
+            disabled={isLoading || isGoogleLoading}
           />
         </div>
 
@@ -169,7 +321,7 @@ function AdminLogin({
             }}
             autoComplete="current-password"
             className="pl-9 pr-10 h-11 rounded-xl text-sm"
-            disabled={isLoading}
+            disabled={isLoading || isGoogleLoading}
           />
           <button
             type="button"
@@ -197,7 +349,7 @@ function AdminLogin({
         <Button
           data-ocid="admin.login.submit_button"
           type="submit"
-          disabled={isLoading}
+          disabled={isLoading || isGoogleLoading}
           className="w-full h-11 rounded-xl bg-vew-sky text-white hover:bg-vew-sky-dark font-semibold text-sm gap-2"
         >
           {isLoading ? (
@@ -209,6 +361,100 @@ function AdminLogin({
             "Login / ಲಾಗಿನ್"
           )}
         </Button>
+
+        <div className="relative my-2">
+          <div className="absolute inset-0 flex items-center">
+            <span className="w-full border-t border-border/40" />
+          </div>
+          <div className="relative flex justify-center text-[10px] uppercase">
+            <span className="bg-background px-2 text-muted-foreground">or</span>
+          </div>
+        </div>
+
+        {/* Google Sign-In */}
+        {isPlaceholderClientId ? (
+          <>
+            <Button
+              type="button"
+              data-ocid="admin.login.google_button"
+              variant="outline"
+              className="w-full h-11 rounded-xl text-sm gap-2"
+              onClick={handleGoogleLogin}
+            >
+              <svg viewBox="0 0 24 24" className="w-4 h-4" aria-hidden="true">
+                <path
+                  d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                  fill="#4285F4"
+                />
+                <path
+                  d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                  fill="#34A853"
+                />
+                <path
+                  d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
+                  fill="#FBBC05"
+                />
+                <path
+                  d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+                  fill="#EA4335"
+                />
+              </svg>
+              Configure Google Login
+            </Button>
+            <p className="text-[10px] text-muted-foreground text-center leading-relaxed">
+              To enable Google login, configure a Google OAuth Client ID in
+              Google Cloud Console and update the GOOGLE_CLIENT_ID constant in
+              AdminScreen.tsx
+            </p>
+          </>
+        ) : (
+          <div className="w-full">
+            {/* Hidden rendered Google button (for proper OAuth popup flow) */}
+            <div ref={googleButtonRef} className="hidden" aria-hidden="true" />
+            {/* Our styled trigger button */}
+            <Button
+              type="button"
+              data-ocid="admin.login.google_button"
+              variant="outline"
+              className="w-full h-11 rounded-xl text-sm gap-2"
+              onClick={handleGoogleLogin}
+              disabled={isGoogleLoading || !googleScriptLoaded}
+            >
+              {isGoogleLoading ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Signing in with Google...
+                </>
+              ) : (
+                <>
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="w-4 h-4"
+                    aria-hidden="true"
+                  >
+                    <path
+                      d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                      fill="#4285F4"
+                    />
+                    <path
+                      d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                      fill="#34A853"
+                    />
+                    <path
+                      d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
+                      fill="#FBBC05"
+                    />
+                    <path
+                      d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+                      fill="#EA4335"
+                    />
+                  </svg>
+                  Continue with Google
+                </>
+              )}
+            </Button>
+          </div>
+        )}
       </form>
 
       <button
@@ -324,16 +570,10 @@ function DesignFormPanel({
         setUploadProgress(100);
       } catch (err) {
         console.error("Image upload failed:", err);
-        const errMsg = err instanceof Error ? err.message : String(err);
-        const friendlyMsg =
-          errMsg.includes("401") ||
-          errMsg.includes("403") ||
-          errMsg.includes("Unauthorized")
-            ? "Upload failed: authentication error. Please log out and log in again."
-            : errMsg.includes("413") || errMsg.includes("too large")
-              ? "Upload failed: image is too large. Try a smaller file."
-              : "Upload failed after retries. Please check your connection and try again.";
-        setUploadError(friendlyMsg);
+        // Always show the real error reason — imageHandler now includes the
+        // full upstream message (canister trap text, HTTP status, token errors).
+        const realMsg = err instanceof Error ? err.message : String(err);
+        setUploadError(realMsg);
         setLocalPreviews((prev) => prev.filter((p) => p !== localPreview));
         URL.revokeObjectURL(localPreview);
       }
@@ -759,43 +999,45 @@ function BulkUploadPanel() {
 
     if (successfulEntries.length > 0) {
       try {
-        const { savedCount, skippedCount } =
+        const { savedCount, failedCount, errors } =
           await createDesignBulk.mutateAsync(successfulEntries);
         const parts: string[] = [];
         if (savedCount > 0)
           parts.push(
             `${savedCount} design${savedCount !== 1 ? "s" : ""} saved`,
           );
-        if (skippedCount > 0) parts.push(`${skippedCount} failed to save`);
+        if (failedCount > 0) parts.push(`${failedCount} failed to save`);
         if (errorCount > 0)
           parts.push(
             `${errorCount} file${errorCount !== 1 ? "s" : ""} failed to upload`,
           );
         toast.success(`${parts.join(", ")}.`);
         setIsDone(true);
+        // Build an informative error message that includes specific reasons
+        const msgParts: string[] = [];
         if (errorCount > 0) {
-          setErrorMsg(
-            `${errorCount} file${errorCount !== 1 ? "s" : ""} failed to upload and were skipped.`,
+          msgParts.push(
+            `${errorCount} file${errorCount !== 1 ? "s" : ""} failed to upload (see red tiles above).`,
           );
         }
+        if (failedCount > 0 && errors.length > 0) {
+          msgParts.push(
+            `${failedCount} design${failedCount !== 1 ? "s" : ""} could not be saved. Reasons: ${errors.join(" | ")}`,
+          );
+        }
+        if (msgParts.length > 0) {
+          setErrorMsg(msgParts.join(" "));
+        }
       } catch (err) {
-        console.error("createDesignBulk error:", err);
+        // mutateAsync itself threw — this means the entire mutation failed
+        // (not a per-chunk error). Show the real reason.
+        console.error("createDesignBulk mutation error:", err);
         const errMsg = err instanceof Error ? err.message : String(err);
-        const friendly =
-          errMsg.includes("Unauthorized") || errMsg.includes("unauthorized")
-            ? "Save failed: authentication error. Please refresh the page and log in again."
-            : errMsg.includes("size") ||
-                errMsg.includes("too large") ||
-                errMsg.includes("413")
-              ? "Save failed: request too large. Try uploading fewer images at once (max 50 per batch)."
-              : errMsg.includes("network") || errMsg.includes("fetch")
-                ? "Save failed: network error. Please check your connection and try again."
-                : "Failed to save designs to database. Please try again in a few seconds.";
-        setErrorMsg(friendly);
+        setErrorMsg(`Failed to save designs: ${errMsg}`);
       }
     } else {
       setErrorMsg(
-        "All uploads failed. Please ensure you are logged in, then try again. If the issue persists, refresh the page.",
+        "All image uploads failed. Reason: check the individual tile errors above. If every tile shows an auth error, please log out, refresh the page, and log in again before retrying.",
       );
     }
 
@@ -1032,7 +1274,8 @@ function BulkUploadPanel() {
 // ─── Admin Screen (main) ──────────────────────────────────────────────────────
 
 export function AdminScreen({ onBack }: { onBack: () => void }) {
-  const { isLoggedIn, logout } = useAdminAuth();
+  const { isLoggedIn, logout, loginMethod, adminEmail, adminName } =
+    useAdminAuth();
   // Local flag so the component re-renders immediately on successful login
   // without waiting for a full sessionStorage round-trip.
   const [loggedInLocal, setLoggedInLocal] = useState(isLoggedIn);
@@ -1124,7 +1367,8 @@ export function AdminScreen({ onBack }: { onBack: () => void }) {
       setEditingDesign(null);
     } catch (err) {
       console.error("Save design error:", err);
-      toast.error("Failed to save design. Please try again.");
+      const reason = err instanceof Error ? err.message : String(err);
+      toast.error(`Failed to save design: ${reason}`);
     }
   };
 
@@ -1194,14 +1438,21 @@ export function AdminScreen({ onBack }: { onBack: () => void }) {
           <ArrowLeft className="w-5 h-5 text-muted-foreground" />
         </button>
         <Shield className="w-4 h-4 text-vew-sky" />
-        <h2 className="text-sm font-bold text-vew-navy">Admin Panel</h2>
+        <div className="flex-1 min-w-0">
+          <h2 className="text-sm font-bold text-vew-navy">Admin Panel</h2>
+          {loginMethod === "google" && adminEmail && (
+            <p className="text-[10px] text-vew-sky truncate">
+              {adminName || adminEmail}
+            </p>
+          )}
+        </div>
         <button
           type="button"
           onClick={() => {
             logout();
             setLoggedInLocal(false);
           }}
-          className="ml-auto flex items-center gap-1 text-xs text-muted-foreground hover:text-destructive transition-colors"
+          className="flex items-center gap-1 text-xs text-muted-foreground hover:text-destructive transition-colors flex-shrink-0"
         >
           <LogOut className="w-3.5 h-3.5" />
           Logout

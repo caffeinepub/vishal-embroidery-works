@@ -4,14 +4,19 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { GitCompare, Search, X } from "lucide-react";
 import { useState } from "react";
 import type { Design } from "../../backend.d";
-import { useDesignsByCategory } from "../../hooks/useQueries";
-import { getSampleByCategory } from "../../lib/sampleData";
+import { useAllDesigns } from "../../hooks/useQueries";
 import { CompareModal } from "../shared/CompareModal";
 import { DesignGrid } from "../shared/DesignGrid";
 
 interface EmbroideryScreenProps {
   onDesignClick: (design: Design) => void;
 }
+
+const EMBROIDERY_CATEGORIES = [
+  "Embroidery",
+  "All Embroidery",
+  "All Embroidery Works",
+];
 
 export function EmbroideryScreen({ onDesignClick }: EmbroideryScreenProps) {
   const [activeTab, setActiveTab] = useState("all");
@@ -20,52 +25,18 @@ export function EmbroideryScreen({ onDesignClick }: EmbroideryScreenProps) {
   const [selectedForCompare, setSelectedForCompare] = useState<bigint[]>([]);
   const [compareOpen, setCompareOpen] = useState(false);
 
-  const embroideryQuery = useDesignsByCategory("Embroidery");
-  const allEmbroideryQuery = useDesignsByCategory("All Embroidery");
-  const allEmbroideryWorksQuery = useDesignsByCategory("All Embroidery Works");
-  const readyBlouseQuery = useDesignsByCategory("Ready Blouse Embroidery");
+  // Single query for all designs -- filter client-side to avoid race conditions
+  const allDesignsQuery = useAllDesigns();
+  const allDesigns = allDesignsQuery.data ?? [];
 
-  // Merge all embroidery categories (Embroidery + All Embroidery + All Embroidery Works)
-  const embroideryDesigns = [
-    ...(embroideryQuery.data ?? []),
-    ...(allEmbroideryQuery.data ?? []),
-    ...(allEmbroideryWorksQuery.data ?? []),
-  ];
+  const allEmbroidery = allDesigns.filter((d) =>
+    EMBROIDERY_CATEGORIES.includes(d.category),
+  );
+  const readyBlouseDesigns = allDesigns.filter(
+    (d) => d.category === "Ready Blouse Embroidery",
+  );
 
-  const sampleEmbroidery = [
-    ...getSampleByCategory("Embroidery"),
-    ...getSampleByCategory("All Embroidery"),
-    ...getSampleByCategory("All Embroidery Works"),
-  ];
-
-  // Only show sample data when all three queries haven't returned any data yet
-  // (i.e. still loading for the first time). Once the backend responds with
-  // an empty array we respect that and show an empty state so newly uploaded
-  // designs can appear immediately after a refetch.
-  const allQueriesReturned =
-    embroideryQuery.data !== undefined &&
-    allEmbroideryQuery.data !== undefined &&
-    allEmbroideryWorksQuery.data !== undefined;
-  const allEmbroidery =
-    !allQueriesReturned && embroideryDesigns.length === 0
-      ? sampleEmbroidery
-      : embroideryDesigns;
-
-  // Same logic for ready blouse: don't fall back to sample data once the
-  // backend has returned (even if it returned an empty array).
-  const readyBlouseDesigns =
-    readyBlouseQuery.data !== undefined
-      ? readyBlouseQuery.data
-      : getSampleByCategory("Ready Blouse Embroidery");
-
-  const isLoadingAll =
-    (embroideryQuery.isLoading ||
-      allEmbroideryQuery.isLoading ||
-      allEmbroideryWorksQuery.isLoading) &&
-    embroideryDesigns.length === 0 &&
-    !allQueriesReturned;
-  const isLoadingReady =
-    readyBlouseQuery.isLoading && readyBlouseQuery.data === undefined;
+  const isLoading = allDesignsQuery.isLoading;
 
   // Filter by search
   const filteredEmbroidery = searchQuery.trim()
@@ -220,7 +191,7 @@ export function EmbroideryScreen({ onDesignClick }: EmbroideryScreenProps) {
 
           <DesignGrid
             designs={compareMode ? allEmbroidery : filteredEmbroidery}
-            isLoading={isLoadingAll}
+            isLoading={isLoading}
             onDesignClick={compareMode ? undefined : onDesignClick}
             emptyMessage="No designs yet. Add designs from Admin Panel."
             emptyKannada="ಅಡ್ಮಿನ್ ಪ್ಯಾನಲ್‌ನಿಂದ ಡಿಸೈನ್ ಸೇರಿಸಿ"
@@ -233,7 +204,7 @@ export function EmbroideryScreen({ onDesignClick }: EmbroideryScreenProps) {
         <TabsContent value="ready" className="flex-1 m-0 overflow-y-auto">
           <DesignGrid
             designs={readyBlouseDesigns}
-            isLoading={isLoadingReady}
+            isLoading={isLoading}
             onDesignClick={onDesignClick}
             emptyMessage="No ready blouse embroidery designs"
             emptyKannada="ಯಾವುದೇ ರೆಡಿ ಬ್ಲೌಸ್ ಡಿಸೈನ್ ಕಂಡುಬಂದಿಲ್ಲ"

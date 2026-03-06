@@ -2,7 +2,6 @@ import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { useState } from "react";
 import type { Design } from "../../backend.d";
 import { useDesignsByCategory } from "../../hooks/useQueries";
-import { SAMPLE_DESIGNS, getSampleByCategory } from "../../lib/sampleData";
 import { DesignGrid } from "../shared/DesignGrid";
 
 interface BlouseScreenProps {
@@ -51,17 +50,8 @@ function BlouseContent({
 }) {
   const query = useDesignsByCategory(category);
 
-  const sampleData =
-    getSampleByCategory(category).length > 0
-      ? getSampleByCategory(category)
-      : SAMPLE_DESIGNS.filter((d) =>
-          d.category
-            .toLowerCase()
-            .includes(category.split(" ")[0].toLowerCase()),
-        );
-
-  const designs = query.data && query.data.length > 0 ? query.data : sampleData;
-  const isLoading = query.isLoading && designs.length === 0;
+  const designs = query.data ?? [];
+  const isLoading = query.isLoading;
 
   return (
     <DesignGrid
