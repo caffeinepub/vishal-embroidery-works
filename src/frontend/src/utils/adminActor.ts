@@ -1,12 +1,18 @@
-import { HttpAgent } from "@icp-sdk/core/agent";
+import { Actor, type HttpAgent } from "@icp-sdk/core/agent";
 import type { backendInterface } from "../backend.d";
-import { createActorWithConfig, loadConfig } from "../config";
+import { createActorWithConfig } from "../config";
 import { getSecretParameter, storeSessionParameter } from "./urlParams";
 
 /**
  * Result of a fully-initialised admin session.
  * Callers can use `actor` for canister calls and `agent` for direct
  * authenticated calls (e.g. StorageClient certificate requests).
+ *
+ * IMPORTANT: `agent` is always the actor's own internal HttpAgent — extracted
+ * via Actor.agentOf() AFTER _initializeAccessControlWithSecret has been called.
+ * This guarantees both the actor and the StorageClient use the same
+ * authenticated agent, which is required for _caffeineStorageCreateCertificate
+ * to succeed and return a v3 response body.
  */
 export interface AdminSession {
   actor: backendInterface;
@@ -95,7 +101,6 @@ export function getAdminSession(): Promise<AdminSession> {
   if (!adminSessionPromise) {
     adminSessionPromise = (async () => {
       console.group("[AdminAuth] Initialising admin session…");
-      const config = await loadConfig();
 
       const adminToken = resolveAdminToken();
 
@@ -116,30 +121,44 @@ export function getAdminSession(): Promise<AdminSession> {
       }
 
       console.info(
-        "[AdminAuth] Token resolved. Building HttpAgent for host:",
-        config.backend_host,
+        "[AdminAuth] Token resolved. Creating actor via createActorWithConfig…",
       );
 
-      // Build a single HttpAgent that will be reused everywhere
-      const agent = await HttpAgent.create({
-        host: config.backend_host,
-        shouldFetchRootKey: config.backend_host?.includes("localhost"),
-      });
+      // Create the actor using Caffeine's standard factory. This builds its own
+      // internal HttpAgent. We do NOT create a separate HttpAgent — that was the
+      // root cause of the v3 response body error: the separate agent never had
+      // _initializeAccessControlWithSecret called on it, so
+      // _caffeineStorageCreateCertificate always got an unauthenticated request
+      // and returned a non-v3 error response.
+      const actor = await createActorWithConfig();
 
-      // Create the actor using the same agent
-      const actor = await createActorWithConfig({
-        agentOptions: { identity: (agent as any).identity },
-      });
-
-      // Initialise access control exactly once with the validated token
+      // Initialise access control on the actor's own agent
       console.info("[AdminAuth] Calling _initializeAccessControlWithSecret…");
       await actor._initializeAccessControlWithSecret(adminToken);
 
+      // Extract the actor's internal HttpAgent AFTER authentication so both
+      // the actor and the StorageClient certificate request share the same
+      // authenticated agent. Actor.agentOf() is the official @dfinity/agent API
+      // for this purpose.
+      const extractedAgent = Actor.agentOf(
+        actor as any,
+      ) as unknown as HttpAgent;
+      if (!extractedAgent) {
+        console.groupEnd();
+        throw new Error(
+          "Admin session init failed: could not extract agent from actor. " +
+            "The actor may not have been created with an HttpAgent.",
+        );
+      }
+
       console.info(
-        "[AdminAuth] ✅ Admin session initialised successfully. Upload requests will use this authenticated agent.",
+        "[AdminAuth] ✅ Admin session initialised. Actor agent extracted and shared with StorageClient.",
       );
       console.groupEnd();
-      return { actor: actor as unknown as backendInterface, agent };
+      return {
+        actor: actor as unknown as backendInterface,
+        agent: extractedAgent,
+      };
     })();
 
     // Reset on failure so the next call gets a fresh attempt
