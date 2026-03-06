@@ -1,7 +1,7 @@
 import { useState } from "react";
 
 // Admin PIN — stored only in this file, never exposed to normal users
-const ADMIN_PIN = "4826";
+const ADMIN_PIN = "7391";
 const SESSION_KEY = "vew_admin_logged_in";
 
 export type LoginMethod = "pin" | null;

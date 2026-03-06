@@ -1,6 +1,6 @@
 import { Toaster } from "@/components/ui/sonner";
-import { Heart, Home, Scissors, Sparkles, Users } from "lucide-react";
-import { useCallback, useRef, useState } from "react";
+import { Heart, Home, Lock, Scissors, Sparkles, Users } from "lucide-react";
+import { useState } from "react";
 import type { Design } from "./backend.d";
 
 import { AdminScreen } from "./components/screens/AdminScreen";
@@ -12,7 +12,13 @@ import { HomeScreen } from "./components/screens/HomeScreen";
 import { SplashScreen } from "./components/screens/SplashScreen";
 import { DesignDetailModal } from "./components/shared/DesignDetailModal";
 
-type Tab = "home" | "embroidery" | "blouse" | "favourite" | "customers";
+type Tab =
+  | "home"
+  | "embroidery"
+  | "blouse"
+  | "favourite"
+  | "customers"
+  | "admin";
 
 const NAV_ITEMS: {
   id: Tab;
@@ -50,55 +56,19 @@ const NAV_ITEMS: {
     kannada: "ಗ್ರಾಹಕರು",
     icon: <Users className="w-5 h-5" />,
   },
+  {
+    id: "admin",
+    label: "Admin",
+    kannada: "ಅಡ್ಮಿನ್",
+    icon: <Lock className="w-5 h-5" />,
+  },
 ];
-
-// Long-press duration in ms before admin panel opens
-const LONG_PRESS_MS = 5000;
 
 export default function App() {
   const [showSplash, setShowSplash] = useState(true);
   const [activeTab, setActiveTab] = useState<Tab>("home");
   const [selectedDesign, setSelectedDesign] = useState<Design | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
-  // Hidden admin panel — opened only via 5-second long press on VEW button
-  const [showAdmin, setShowAdmin] = useState(false);
-
-  // Long-press state for VEW button
-  const [isPressingVEW, setIsPressingVEW] = useState(false);
-  const [pressProgress, setPressProgress] = useState(0); // 0-100
-  const pressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const progressIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
-    null,
-  );
-  const pressStartRef = useRef<number>(0);
-
-  const startLongPress = useCallback(() => {
-    setIsPressingVEW(true);
-    setPressProgress(0);
-    pressStartRef.current = Date.now();
-
-    // Animate progress
-    progressIntervalRef.current = setInterval(() => {
-      const elapsed = Date.now() - pressStartRef.current;
-      const pct = Math.min((elapsed / LONG_PRESS_MS) * 100, 100);
-      setPressProgress(pct);
-    }, 50);
-
-    // Fire after LONG_PRESS_MS
-    pressTimerRef.current = setTimeout(() => {
-      clearInterval(progressIntervalRef.current!);
-      setIsPressingVEW(false);
-      setPressProgress(0);
-      setShowAdmin(true);
-    }, LONG_PRESS_MS);
-  }, []);
-
-  const cancelLongPress = useCallback(() => {
-    if (pressTimerRef.current) clearTimeout(pressTimerRef.current);
-    if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
-    setIsPressingVEW(false);
-    setPressProgress(0);
-  }, []);
 
   const handleDesignClick = (design: Design) => {
     setSelectedDesign(design);
@@ -115,24 +85,10 @@ export default function App() {
     blouse: { en: "Blouse", kn: "ಬ್ಲೌಸ್" },
     favourite: { en: "Favourites", kn: "ಮೆಚ್ಚಿನವು" },
     customers: { en: "Customers", kn: "ಗ್ರಾಹಕರು" },
+    admin: { en: "Admin Panel", kn: "ಅಡ್ಮಿನ್ ಪ್ಯಾನೆಲ್" },
   };
 
-  const showHeader = activeTab !== "home";
-
-  // Admin panel overlay — renders full-screen on top of the main app
-  if (showAdmin && !showSplash) {
-    return (
-      <>
-        <div className="w-full max-w-[430px] mx-auto min-h-screen bg-background flex flex-col relative overflow-hidden">
-          <AdminScreen onBack={() => setShowAdmin(false)} />
-        </div>
-        <Toaster
-          position="top-center"
-          toastOptions={{ classNames: { toast: "rounded-xl shadow-card" } }}
-        />
-      </>
-    );
-  }
+  const showHeader = activeTab !== "home" && activeTab !== "admin";
 
   return (
     <>
@@ -191,35 +147,10 @@ export default function App() {
               </div>
             </div>
 
-            {/* VEW button — hidden admin access point.
-                Long press for 5 seconds to open admin login.
-                Normal tap does nothing visible to users. */}
-            <button
-              type="button"
-              data-ocid="home.admin_access.button"
-              onMouseDown={startLongPress}
-              onMouseUp={cancelLongPress}
-              onMouseLeave={cancelLongPress}
-              onTouchStart={startLongPress}
-              onTouchEnd={cancelLongPress}
-              onTouchCancel={cancelLongPress}
-              onContextMenu={(e) => e.preventDefault()}
-              className="relative bg-vew-sky-light text-vew-sky text-[10px] font-bold px-2 py-0.5 rounded-full overflow-hidden select-none"
-              aria-label="VEW"
-              style={{ WebkitUserSelect: "none" }}
-            >
-              {/* Progress ring fill while pressing */}
-              {isPressingVEW && (
-                <span
-                  className="absolute inset-0 bg-vew-sky/30 rounded-full"
-                  style={{
-                    width: `${pressProgress}%`,
-                    transition: "width 50ms linear",
-                  }}
-                />
-              )}
-              <span className="relative z-10">VEW</span>
-            </button>
+            {/* VEW badge — decorative only, no longer the hidden admin trigger */}
+            <span className="bg-vew-sky-light text-vew-sky text-[10px] font-bold px-2 py-0.5 rounded-full select-none">
+              VEW
+            </span>
           </header>
         )}
 
@@ -241,6 +172,9 @@ export default function App() {
               <FavouriteScreen onDesignClick={handleDesignClick} />
             )}
             {activeTab === "customers" && <CustomersScreen />}
+            {activeTab === "admin" && (
+              <AdminScreen onBack={() => setActiveTab("home")} />
+            )}
           </main>
         )}
 
@@ -257,14 +191,18 @@ export default function App() {
                     onClick={() => handleTabChange(item.id)}
                     className={`flex-1 flex flex-col items-center justify-center py-2 gap-0.5 transition-all duration-200 relative min-h-[60px] ${
                       isActive
-                        ? "text-vew-sky"
+                        ? item.id === "admin"
+                          ? "text-amber-500"
+                          : "text-vew-sky"
                         : "text-muted-foreground hover:text-foreground"
                     }`}
                     aria-label={item.label}
                     aria-current={isActive ? "page" : undefined}
                   >
                     {isActive && (
-                      <span className="absolute top-0 left-1/2 -translate-x-1/2 w-5 h-0.5 bg-vew-sky rounded-b-full" />
+                      <span
+                        className={`absolute top-0 left-1/2 -translate-x-1/2 w-5 h-0.5 rounded-b-full ${item.id === "admin" ? "bg-amber-500" : "bg-vew-sky"}`}
+                      />
                     )}
                     <span
                       className={`transition-transform duration-200 ${isActive ? "scale-110" : "scale-100"}`}
@@ -275,7 +213,7 @@ export default function App() {
                       {item.label}
                     </span>
                     <span
-                      className={`text-[7px] leading-tight ${isActive ? "text-vew-sky/70" : "text-muted-foreground/60"}`}
+                      className={`text-[7px] leading-tight ${isActive ? (item.id === "admin" ? "text-amber-500/70" : "text-vew-sky/70") : "text-muted-foreground/60"}`}
                     >
                       {item.kannada}
                     </span>

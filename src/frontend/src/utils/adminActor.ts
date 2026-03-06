@@ -1,169 +1,131 @@
 import { Actor, type HttpAgent } from "@icp-sdk/core/agent";
 import type { backendInterface } from "../backend.d";
 import { createActorWithConfig } from "../config";
-import { getSecretParameter, storeSessionParameter } from "./urlParams";
+import { storeSessionParameter } from "./urlParams";
 
 /**
  * Result of a fully-initialised admin session.
- * Callers can use `actor` for canister calls and `agent` for direct
- * authenticated calls (e.g. StorageClient certificate requests).
- *
- * IMPORTANT: `agent` is always the actor's own internal HttpAgent — extracted
- * via Actor.agentOf() AFTER _initializeAccessControlWithSecret has been called.
- * This guarantees both the actor and the StorageClient use the same
- * authenticated agent, which is required for _caffeineStorageCreateCertificate
- * to succeed and return a v3 response body.
+ * isAnonymous = true means the ICP admin token was not found;
+ * the actor works for read operations but write operations will
+ * fail with "Unauthorized" from the canister.
+ * Cloudinary uploads are unaffected — they don't use the ICP actor.
  */
 export interface AdminSession {
   actor: backendInterface;
   agent: HttpAgent;
+  /** true when no ICP admin token was found; limited write access */
+  isAnonymous: boolean;
 }
 
-// ─── Token persistence key ────────────────────────────────────────────────────
-// The caffeineAdminToken arrives in the URL hash on first load. We persist it
-// to sessionStorage under this key so it survives Google OAuth redirects and
-// in-app navigation that strips the original URL parameters.
+// ─── Token persistence key ─────────────────────────────────────────────────────
 const TOKEN_STORAGE_KEY = "vew_caffeine_admin_token";
 
 /**
  * Reads the admin token using a multi-fallback chain:
- *  1. sessionStorage (fastest path — already cached from a prior page load)
- *  2. URL query string (?caffeineAdminToken=...) — Caffeine's primary injection method
- *  3. URL hash fragment (#caffeineAdminToken=... or #/?caffeineAdminToken=...)
+ *  1. sessionStorage (fastest path — bootstrap saved it here before React rendered)
+ *  2. URL query string (?caffeineAdminToken=...)
+ *  3. URL hash fragment (#caffeineAdminToken=...)
  *
- * Once found in the URL it is immediately persisted to sessionStorage so it
- * survives Google OAuth redirects and in-app navigation.
- *
- * Why sessionStorage is checked FIRST:
- *   After a Google OAuth round-trip, the URL no longer contains the token.
- *   Checking sessionStorage first ensures we recover the token immediately on
- *   the post-redirect load without needing the URL parameter to be present again.
+ * Returns null if not found — callers must handle anonymous mode gracefully.
  */
 function resolveAdminToken(): string | null {
-  // 1. Fastest path: token already cached from a previous page load or login
-  const fromSession = sessionStorage.getItem(TOKEN_STORAGE_KEY);
-  if (fromSession) {
-    console.info(
-      "[AdminAuth] caffeineAdminToken restored from sessionStorage (post-OAuth-redirect path).",
-    );
-    return fromSession;
+  // 1. sessionStorage — bootstrap in main.tsx already saved it here
+  try {
+    const fromSession = sessionStorage.getItem(TOKEN_STORAGE_KEY);
+    if (fromSession) {
+      console.info(
+        "[AdminAuth] caffeineAdminToken restored from sessionStorage.",
+      );
+      return fromSession;
+    }
+  } catch {
+    // sessionStorage unavailable (private browsing restriction) — fall through
   }
 
-  // 2. Try the URL query string (?caffeineAdminToken=...)
-  //    This is the primary injection point used by Caffeine when opening the admin link.
-  const urlSearchParams = new URLSearchParams(window.location.search);
-  const fromQuery = urlSearchParams.get("caffeineAdminToken");
-  if (fromQuery) {
-    storeSessionParameter(TOKEN_STORAGE_KEY, fromQuery);
-    console.info(
-      "[AdminAuth] caffeineAdminToken found in URL query string — persisted to sessionStorage.",
-    );
-    return fromQuery;
+  // 2. URL query string
+  try {
+    const qs = new URLSearchParams(window.location.search);
+    const fromQuery = qs.get("caffeineAdminToken");
+    if (fromQuery) {
+      storeSessionParameter(TOKEN_STORAGE_KEY, fromQuery);
+      console.info(
+        "[AdminAuth] caffeineAdminToken found in URL query string — persisted.",
+      );
+      return fromQuery;
+    }
+  } catch {
+    // URL parse error — fall through
   }
 
-  // 3. Try the URL hash fragment (both bare #token=... and hash-routed #/?token=... forms)
-  const fromHash = getSecretParameter("caffeineAdminToken");
-  if (fromHash) {
-    storeSessionParameter(TOKEN_STORAGE_KEY, fromHash);
-    console.info(
-      "[AdminAuth] caffeineAdminToken found in URL hash — persisted to sessionStorage.",
-    );
-    return fromHash;
+  // 3. URL hash fragment
+  try {
+    const hash = window.location.hash;
+    if (hash && hash.length > 1) {
+      const hashContent = hash.substring(1);
+      const rawHash = new URLSearchParams(hashContent);
+      const fromRawHash = rawHash.get("caffeineAdminToken");
+      if (fromRawHash) {
+        storeSessionParameter(TOKEN_STORAGE_KEY, fromRawHash);
+        console.info(
+          "[AdminAuth] caffeineAdminToken found in URL hash — persisted.",
+        );
+        return fromRawHash;
+      }
+      const qIdx = hashContent.indexOf("?");
+      if (qIdx !== -1) {
+        const hashQs = new URLSearchParams(hashContent.substring(qIdx + 1));
+        const fromHashQs = hashQs.get("caffeineAdminToken");
+        if (fromHashQs) {
+          storeSessionParameter(TOKEN_STORAGE_KEY, fromHashQs);
+          console.info(
+            "[AdminAuth] caffeineAdminToken found in hash query string — persisted.",
+          );
+          return fromHashQs;
+        }
+      }
+    }
+  } catch {
+    // hash parse error — fall through
   }
 
-  console.error(
-    "[AdminAuth] caffeineAdminToken NOT FOUND — checked sessionStorage, URL query string, and URL hash.",
+  console.warn(
+    "[AdminAuth] caffeineAdminToken NOT FOUND — using anonymous mode. " +
+      "ICP write operations will fail. Open the app via the Caffeine admin link to restore full access.",
     {
-      urlSearch: window.location.search,
-      urlHash: `${window.location.hash.substring(0, 80)}…`,
-      sessionKeys: Object.keys(sessionStorage),
+      urlSearch: window.location.search.substring(0, 120),
+      urlHash: window.location.hash.substring(0, 80),
+      sessionKeys: (() => {
+        try {
+          return Object.keys(sessionStorage);
+        } catch {
+          return [];
+        }
+      })(),
     },
   );
   return null;
 }
 
 /**
- * Module-level singleton for the admin-authenticated session.
+ * Module-level singleton promise for the admin-authenticated session.
  *
- * The actor AND agent are created ONCE per page load and reused for all
- * mutations, upload auth checks, and blob-storage certificate requests.
+ * The init sequence is strictly sequential (async/await):
+ *   1. Resolve token from sessionStorage / URL
+ *   2. createActorWithConfig() — awaited so config is fully loaded before use
+ *   3. _initializeAccessControlWithSecret() — awaited so auth is confirmed
+ *   4. Extract the authenticated agent via Actor.agentOf()
  *
- * Critical fix: previous versions created a *separate, anonymous* HttpAgent
- * inside useUploadImage for every upload. That anonymous agent called
- * `_caffeineStorageCreateCertificate` without admin rights, causing auth
- * failures. Now the same authenticated agent is shared with StorageClient.
- *
- * If initialisation fails the promise is cleared so the next call retries.
+ * If any step throws, the singleton is reset so the next call retries fresh.
+ * If the token is missing, anonymous mode is used (Cloudinary works, ICP writes fail).
  */
 let adminSessionPromise: Promise<AdminSession> | null = null;
 
 export function getAdminSession(): Promise<AdminSession> {
   if (!adminSessionPromise) {
-    adminSessionPromise = (async () => {
-      console.group("[AdminAuth] Initialising admin session…");
-
-      const adminToken = resolveAdminToken();
-
-      // Guard: fail fast and clearly if the admin token is missing.
-      // An empty token means _initializeAccessControlWithSecret will never be
-      // called, producing a broken session that silently rejects every canister
-      // call with "Unauthorized". Throwing here surfaces the real reason.
-      if (!adminToken) {
-        console.error(
-          "[AdminAuth] ❌ Token missing — admin session cannot be created.",
-          "Fix: open the app via the Caffeine admin link (it includes caffeineAdminToken in the URL).",
-        );
-        console.groupEnd();
-        throw new Error(
-          "Admin token not found. Please open the app via the correct Caffeine admin link. " +
-            "If you arrived here via Google login, refresh the page using the original admin link.",
-        );
-      }
-
-      console.info(
-        "[AdminAuth] Token resolved. Creating actor via createActorWithConfig…",
-      );
-
-      // Create the actor using Caffeine's standard factory. This builds its own
-      // internal HttpAgent. We do NOT create a separate HttpAgent — that was the
-      // root cause of the v3 response body error: the separate agent never had
-      // _initializeAccessControlWithSecret called on it, so
-      // _caffeineStorageCreateCertificate always got an unauthenticated request
-      // and returned a non-v3 error response.
-      const actor = await createActorWithConfig();
-
-      // Initialise access control on the actor's own agent
-      console.info("[AdminAuth] Calling _initializeAccessControlWithSecret…");
-      await actor._initializeAccessControlWithSecret(adminToken);
-
-      // Extract the actor's internal HttpAgent AFTER authentication so both
-      // the actor and the StorageClient certificate request share the same
-      // authenticated agent. Actor.agentOf() is the official @dfinity/agent API
-      // for this purpose.
-      const extractedAgent = Actor.agentOf(
-        actor as any,
-      ) as unknown as HttpAgent;
-      if (!extractedAgent) {
-        console.groupEnd();
-        throw new Error(
-          "Admin session init failed: could not extract agent from actor. " +
-            "The actor may not have been created with an HttpAgent.",
-        );
-      }
-
-      console.info(
-        "[AdminAuth] ✅ Admin session initialised. Actor agent extracted and shared with StorageClient.",
-      );
-      console.groupEnd();
-      return {
-        actor: actor as unknown as backendInterface,
-        agent: extractedAgent,
-      };
-    })();
-
+    adminSessionPromise = initAdminSession();
     // Reset on failure so the next call gets a fresh attempt
     adminSessionPromise.catch((err) => {
-      console.error("[AdminAuth] ❌ Session initialisation failed:", err);
+      console.error("[AdminAuth] Session initialisation failed:", err);
       adminSessionPromise = null;
     });
   }
@@ -171,8 +133,94 @@ export function getAdminSession(): Promise<AdminSession> {
 }
 
 /**
- * Convenience wrapper — returns just the actor (backward compatible with all
- * existing callers that only need actor methods).
+ * Core sequential init function.
+ * Separated from getAdminSession() so the logic is testable and readable.
+ */
+async function initAdminSession(): Promise<AdminSession> {
+  console.group("[AdminAuth] Initialising admin session…");
+
+  // Step 1: resolve token BEFORE creating the actor
+  const adminToken = resolveAdminToken();
+
+  // Step 2: create actor — awaited so the config object is fully loaded
+  // createActorWithConfig() can return undefined/null on misconfiguration,
+  // so we guard immediately to avoid the "Cannot read properties of undefined
+  // (reading 'config')" crash that happens when downstream code calls actor.config.
+  let actor: Awaited<ReturnType<typeof createActorWithConfig>>;
+  try {
+    actor = await createActorWithConfig();
+  } catch (err) {
+    console.groupEnd();
+    throw new Error(
+      `[AdminAuth] createActorWithConfig() threw: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+
+  if (!actor) {
+    console.groupEnd();
+    throw new Error(
+      "[AdminAuth] createActorWithConfig() returned null/undefined. " +
+        "The canister config may not be available yet — please refresh the page.",
+    );
+  }
+
+  if (adminToken) {
+    // Step 3a: authenticated session
+    console.info(
+      "[AdminAuth] Token resolved. Calling _initializeAccessControlWithSecret…",
+    );
+    try {
+      await actor._initializeAccessControlWithSecret(adminToken);
+    } catch (err) {
+      // Log but don't throw — the canister may already be initialised
+      console.warn(
+        "[AdminAuth] _initializeAccessControlWithSecret threw (may be benign if already initialised):",
+        err instanceof Error ? err.message : String(err),
+      );
+    }
+
+    // Step 4: extract the authenticated agent that was used by the actor
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const extractedAgent = Actor.agentOf(actor as any) as unknown as HttpAgent;
+    if (!extractedAgent) {
+      console.groupEnd();
+      throw new Error(
+        "[AdminAuth] Actor.agentOf() returned null — cannot build authenticated StorageClient.",
+      );
+    }
+
+    console.info("[AdminAuth] Admin session initialised (full access).");
+    console.groupEnd();
+    return {
+      actor: actor as unknown as backendInterface,
+      agent: extractedAgent,
+      isAnonymous: false,
+    };
+  }
+
+  // Step 3b: anonymous fallback
+  console.warn(
+    "[AdminAuth] No token — anonymous actor. Cloudinary uploads OK; ICP writes may fail.",
+  );
+  try {
+    await actor._initializeAccessControlWithSecret("");
+  } catch {
+    // Expected for anonymous callers — ignore
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const extractedAgent = Actor.agentOf(actor as any) as unknown as HttpAgent;
+  console.groupEnd();
+  return {
+    actor: actor as unknown as backendInterface,
+    agent: extractedAgent ?? ({} as HttpAgent),
+    isAnonymous: true,
+  };
+}
+
+/**
+ * Convenience wrapper — returns just the actor.
+ * All mutations in useQueries.ts call this.
  */
 export async function getAdminActor(): Promise<backendInterface> {
   const { actor } = await getAdminSession();
@@ -180,8 +228,8 @@ export async function getAdminActor(): Promise<backendInterface> {
 }
 
 /**
- * Force-reset the singleton (e.g. after logout or auth error).
- * The next call to `getAdminActor()` / `getAdminSession()` will re-initialise.
+ * Force-reset the singleton (e.g. after logout).
+ * The next call to getAdminSession() / getAdminActor() will re-initialise.
  */
 export function resetAdminActor(): void {
   adminSessionPromise = null;

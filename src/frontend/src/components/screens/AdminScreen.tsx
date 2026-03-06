@@ -61,6 +61,7 @@ import {
   useSetTrending,
   useUpdateDesign,
 } from "../../hooks/useQueries";
+import { useAdminSessionStore } from "../../store/adminSessionStore";
 import { getAdminActor, getAdminSession } from "../../utils/adminActor";
 import { uploadBatchToCloudinary } from "../../utils/cloudinaryUpload";
 import { CloudinaryImageUploader } from "../shared/CloudinaryImageUploader";
@@ -100,41 +101,34 @@ const emptyDesignForm: DesignFormData = {
 };
 
 // ─── Auth Status Banner ───────────────────────────────────────────────────────
-// Shows a real-time indicator of whether the admin session token is ready.
-// Green = token found + session initialised → uploads will succeed.
-// Red   = token missing → uploads will fail with "Unauthorized".
-// This saves opening DevTools to diagnose upload failures.
+// Reads directly from the Zustand store — no duplicate getAdminSession() calls.
+// Green  = token found + session initialised → uploads will succeed.
+// Amber  = anonymous session → Cloudinary uploads work, ICP saves may fail.
+// Red    = session completely failed → uploads will fail.
 
-type AuthTokenStatus = "checking" | "ok" | "missing";
+type AuthTokenStatus = "checking" | "ok" | "limited" | "missing";
 
 function AuthStatusBanner() {
-  const [status, setStatus] = useState<AuthTokenStatus>("checking");
-  const [detail, setDetail] = useState("");
+  const { status: storeStatus, session, error } = useAdminSessionStore();
 
-  useEffect(() => {
-    let cancelled = false;
-    getAdminSession()
-      .then(() => {
-        if (!cancelled) {
-          setStatus("ok");
-          setDetail("Admin session active — uploads are authorised.");
-          console.info(
-            "[AuthStatus] Banner: ✅ Admin session verified and ready.",
-          );
-        }
-      })
-      .catch((err: unknown) => {
-        if (!cancelled) {
-          const msg = err instanceof Error ? err.message : String(err);
-          setStatus("missing");
-          setDetail(msg);
-          console.error("[AuthStatus] Banner: ❌ Admin session failed —", msg);
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  let status: AuthTokenStatus = "checking";
+  let detail = "";
+
+  if (storeStatus === "loading" || storeStatus === "idle") {
+    status = "checking";
+  } else if (storeStatus === "error") {
+    status = "missing";
+    detail = error ?? "Unknown error initialising admin session.";
+  } else if (storeStatus === "ready") {
+    if (session?.isAnonymous) {
+      status = "limited";
+      detail =
+        "Photo uploads (Cloudinary) work. Design saves to ICP backend may fail — open via the Caffeine admin link for full access.";
+    } else {
+      status = "ok";
+      detail = "Admin session active — all uploads and saves are authorised.";
+    }
+  }
 
   if (status === "checking") return null;
 
@@ -150,6 +144,23 @@ function AuthStatusBanner() {
             Authentication Status: Active
           </p>
           <p className="text-[10px] text-green-600 leading-snug">{detail}</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (status === "limited") {
+    return (
+      <div
+        data-ocid="admin.auth.success_state"
+        className="mx-4 mt-3 flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2"
+      >
+        <CheckCircle2 className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
+        <div>
+          <p className="text-[11px] font-semibold text-amber-700">
+            Authentication Status: Active
+          </p>
+          <p className="text-[10px] text-amber-600 leading-snug">{detail}</p>
         </div>
       </div>
     );
@@ -227,10 +238,12 @@ function AdminPinLogin({
       setTimeout(() => {
         const ok = loginWithPin(next);
         if (ok) {
-          // Pre-warm the admin actor so uploads are ready immediately
-          getAdminActor().catch((e) =>
-            console.warn("Admin actor pre-warm failed:", e),
-          );
+          // Pre-warm via the store — this starts the sequential init immediately
+          // so the dashboard loading gate shows the spinner rather than a blank screen.
+          useAdminSessionStore
+            .getState()
+            .initSession()
+            .catch((e) => console.warn("Admin actor pre-warm failed:", e));
           onLoginSuccess();
         } else {
           setShake(true);
@@ -1285,6 +1298,31 @@ function DeliveryRemindersSection() {
   );
 }
 
+// ─── Admin Session Loading Gate ───────────────────────────────────────────────
+// Shown after successful PIN login while the session is still initialising.
+// Prevents child components from calling mutations before config is ready.
+
+function AdminSessionLoadingGate() {
+  return (
+    <div
+      data-ocid="admin.session.loading_state"
+      className="flex-1 flex flex-col items-center justify-center gap-4 px-6 py-12"
+    >
+      <div className="w-14 h-14 rounded-2xl bg-vew-sky-light flex items-center justify-center">
+        <Loader2 className="w-7 h-7 text-vew-sky animate-spin" />
+      </div>
+      <div className="text-center">
+        <p className="text-sm font-semibold text-vew-navy">
+          Initialising Admin Panel
+        </p>
+        <p className="text-[11px] text-muted-foreground mt-1">
+          Loading configuration… · ಕಾನ್ಫಿಗರೇಶನ್ ಲೋಡ್ ಆಗುತ್ತಿದೆ…
+        </p>
+      </div>
+    </div>
+  );
+}
+
 // ─── Admin Screen (main) ──────────────────────────────────────────────────────
 
 export function AdminScreen({ onBack }: { onBack: () => void }) {
@@ -1293,6 +1331,13 @@ export function AdminScreen({ onBack }: { onBack: () => void }) {
   // without waiting for a full sessionStorage round-trip.
   const [loggedInLocal, setLoggedInLocal] = useState(isLoggedIn);
 
+  // Zustand store — used to init the session once after login and track status
+  const {
+    status: sessionStatus,
+    initSession,
+    clearSession,
+  } = useAdminSessionStore();
+
   const [activeTab, setActiveTab] = useState<AdminTab>("analytics");
   const [showForm, setShowForm] = useState(false);
   const [editingDesign, setEditingDesign] = useState<Design | null>(null);
@@ -1300,6 +1345,14 @@ export function AdminScreen({ onBack }: { onBack: () => void }) {
     null,
   );
   const [searchQuery, setSearchQuery] = useState("");
+
+  // Kick off session init as soon as the user is logged in.
+  // initSession() is idempotent — safe to call multiple times.
+  useEffect(() => {
+    if (loggedInLocal) {
+      initSession();
+    }
+  }, [loggedInLocal, initSession]);
 
   const allDesignsQuery = useAllDesigns();
   const customersQuery = useAllCustomers();
@@ -1318,6 +1371,7 @@ export function AdminScreen({ onBack }: { onBack: () => void }) {
       d.category.toLowerCase().includes(searchQuery.toLowerCase()),
   );
 
+  // Not logged in → show PIN screen
   if (!loggedInLocal) {
     return (
       <div className="flex-1 flex flex-col">
@@ -1325,6 +1379,17 @@ export function AdminScreen({ onBack }: { onBack: () => void }) {
           onBack={onBack}
           onLoginSuccess={() => setLoggedInLocal(true)}
         />
+      </div>
+    );
+  }
+
+  // Logged in but session still initialising → show loading gate
+  // This prevents "Cannot read properties of undefined (reading 'config')"
+  // that occurs when mutations fire before createActorWithConfig() resolves.
+  if (sessionStatus === "idle" || sessionStatus === "loading") {
+    return (
+      <div className="flex-1 flex flex-col">
+        <AdminSessionLoadingGate />
       </div>
     );
   }
@@ -1463,6 +1528,7 @@ export function AdminScreen({ onBack }: { onBack: () => void }) {
           data-ocid="admin.logout.button"
           onClick={() => {
             logout();
+            clearSession();
             setLoggedInLocal(false);
           }}
           className="flex items-center gap-1 text-xs text-muted-foreground hover:text-destructive transition-colors flex-shrink-0"
