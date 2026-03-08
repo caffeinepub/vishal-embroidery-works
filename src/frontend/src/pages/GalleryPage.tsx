@@ -112,7 +112,7 @@ export function GalleryPage({
             <DesignCard
               key={design.id}
               design={design}
-              useWideRatio={isEmbroiderySubcategory}
+              imageMode={isEmbroiderySubcategory ? "embroidery-contain" : false}
               onClick={() => onSelectDesign(design)}
             />
           ))}

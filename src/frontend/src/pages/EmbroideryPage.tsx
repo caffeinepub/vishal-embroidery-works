@@ -142,7 +142,11 @@ export function EmbroideryPage({ onSelectDesign }: EmbroideryPageProps) {
                 <DesignCard
                   key={design.id}
                   design={design}
-                  useWideRatio={activeSubcategory === "embroidery"}
+                  imageMode={
+                    activeSubcategory === "embroidery"
+                      ? "embroidery-contain"
+                      : false
+                  }
                   onClick={() => onSelectDesign(design)}
                 />
               ))}
