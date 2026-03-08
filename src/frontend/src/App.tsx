@@ -1,243 +1,226 @@
-import { Toaster } from "@/components/ui/sonner";
-import { Heart, Home, Lock, Scissors, Sparkles, Users } from "lucide-react";
-import { useState } from "react";
-import type { Design } from "./backend.d";
+import { useCallback, useState } from "react";
+import { AdminPINScreen } from "./components/AdminPINScreen";
+import { BottomNav } from "./components/BottomNav";
+import { CompareModal } from "./components/CompareModal";
+import { TopBar } from "./components/TopBar";
+import { AdminPanel } from "./components/admin/AdminPanel";
+import { Toaster } from "./components/ui/sonner";
+import type { Design, Subcategory } from "./lib/storage";
+import { BlousePage } from "./pages/BlousePage";
+import { BridalPage } from "./pages/BridalPage";
+import { DesignDetailPage } from "./pages/DesignDetailPage";
+import { EmbroideryPage } from "./pages/EmbroideryPage";
+import { GalleryPage } from "./pages/GalleryPage";
+import { HomePage } from "./pages/HomePage";
+import { StitchingOrdersPage } from "./pages/StitchingOrdersPage";
+import { type ActiveTab, useAppStore } from "./store/appStore";
 
-import { AdminScreen } from "./components/screens/AdminScreen";
-import { BlouseScreen } from "./components/screens/BlouseScreen";
-import { CustomersScreen } from "./components/screens/CustomersScreen";
-import { EmbroideryScreen } from "./components/screens/EmbroideryScreen";
-import { FavouriteScreen } from "./components/screens/FavouriteScreen";
-import { HomeScreen } from "./components/screens/HomeScreen";
-import { SplashScreen } from "./components/screens/SplashScreen";
-import { DesignDetailModal } from "./components/shared/DesignDetailModal";
+const SUBCATEGORY_LABELS: Record<Subcategory, string> = {
+  embroidery: "Embroidery",
+  "ready-blouse-embroidery": "Ready Blouse Embroidery",
+  "simple-blouse": "Simple Blouse",
+  "boat-neck": "Boat Neck Blouse",
+  "bridal-blouse": "Bridal Blouse",
+  "designer-blouse": "Designer Blouse",
+};
 
-type Tab =
-  | "home"
-  | "embroidery"
-  | "blouse"
-  | "favourite"
-  | "customers"
-  | "admin";
-
-const NAV_ITEMS: {
-  id: Tab;
-  label: string;
-  kannada: string;
-  icon: React.ReactNode;
-}[] = [
-  {
-    id: "home",
-    label: "Home",
-    kannada: "ಮುಖಪುಟ",
-    icon: <Home className="w-5 h-5" />,
-  },
-  {
-    id: "embroidery",
-    label: "Embroidery",
-    kannada: "ಕಸೂತಿ",
-    icon: <Sparkles className="w-5 h-5" />,
-  },
-  {
-    id: "blouse",
-    label: "Blouse",
-    kannada: "ಬ್ಲೌಸ್",
-    icon: <Scissors className="w-5 h-5" />,
-  },
-  {
-    id: "favourite",
-    label: "Favourite",
-    kannada: "ಮೆಚ್ಚಿನ",
-    icon: <Heart className="w-5 h-5" />,
-  },
-  {
-    id: "customers",
-    label: "Customers",
-    kannada: "ಗ್ರಾಹಕರು",
-    icon: <Users className="w-5 h-5" />,
-  },
-  {
-    id: "admin",
-    label: "Admin",
-    kannada: "ಅಡ್ಮಿನ್",
-    icon: <Lock className="w-5 h-5" />,
-  },
-];
+// Page stack navigation
+type PageEntry =
+  | { page: "home" }
+  | { page: "embroidery" }
+  | { page: "blouse" }
+  | { page: "bridal" }
+  | { page: "orders" }
+  | { page: "gallery"; subcategory: Subcategory; title?: string }
+  | { page: "bridal-gallery"; bridalFilter: "embroidery" | "blouse" }
+  | { page: "design-detail"; design: Design };
 
 export default function App() {
-  const [showSplash, setShowSplash] = useState(true);
-  const [activeTab, setActiveTab] = useState<Tab>("home");
-  const [selectedDesign, setSelectedDesign] = useState<Design | null>(null);
-  const [detailOpen, setDetailOpen] = useState(false);
+  const { setActiveTab, isAdminOpen, isAdminAuthenticated, compareDesigns } =
+    useAppStore();
+  const [pageStack, setPageStack] = useState<PageEntry[]>([{ page: "home" }]);
 
-  const handleDesignClick = (design: Design) => {
-    setSelectedDesign(design);
-    setDetailOpen(true);
+  const currentPage = pageStack[pageStack.length - 1];
+
+  const navigate = useCallback((entry: PageEntry) => {
+    setPageStack((prev) => [...prev, entry]);
+  }, []);
+
+  const goBack = useCallback(() => {
+    setPageStack((prev) => {
+      if (prev.length > 1) return prev.slice(0, -1);
+      return prev;
+    });
+  }, []);
+
+  const handleTabChange = useCallback(
+    (tab: ActiveTab) => {
+      setActiveTab(tab);
+      setPageStack([{ page: tab } as PageEntry]);
+    },
+    [setActiveTab],
+  );
+
+  // Page title for TopBar
+  const getPageTitle = (): string => {
+    switch (currentPage.page) {
+      case "home":
+        return "Vishal Embroidery Works";
+      case "embroidery":
+        return "Embroidery";
+      case "blouse":
+        return "Blouse Designs";
+      case "bridal":
+        return "Bridal Collection";
+      case "orders":
+        return "Stitching Orders";
+      case "gallery":
+        return (
+          (
+            currentPage as {
+              page: "gallery";
+              subcategory: Subcategory;
+              title?: string;
+            }
+          ).title || "Gallery"
+        );
+      case "bridal-gallery":
+        return (
+          currentPage as {
+            page: "bridal-gallery";
+            bridalFilter: "embroidery" | "blouse";
+          }
+        ).bridalFilter === "embroidery"
+          ? "Bridal Embroidery"
+          : "Bridal Blouse";
+      case "design-detail":
+        return (currentPage as { page: "design-detail"; design: Design }).design
+          .designCode;
+      default:
+        return "Vishal Embroidery Works";
+    }
   };
 
-  const handleTabChange = (tab: Tab) => {
-    setActiveTab(tab);
-  };
+  const showBack = pageStack.length > 1;
 
-  const screenTitle: Record<Tab, { en: string; kn: string }> = {
-    home: { en: "VEW", kn: "ವಿಶಾಲ್ ಎಂಬ್ರಾಯ್ಡರಿ" },
-    embroidery: { en: "Embroidery", kn: "ಕಸೂತಿ" },
-    blouse: { en: "Blouse", kn: "ಬ್ಲೌಸ್" },
-    favourite: { en: "Favourites", kn: "ಮೆಚ್ಚಿನವು" },
-    customers: { en: "Customers", kn: "ಗ್ರಾಹಕರು" },
-    admin: { en: "Admin Panel", kn: "ಅಡ್ಮಿನ್ ಪ್ಯಾನೆಲ್" },
-  };
+  // Render current page content
+  const renderContent = () => {
+    switch (currentPage.page) {
+      case "home":
+        return <HomePage onNavigate={(tab) => handleTabChange(tab)} />;
 
-  const showHeader = activeTab !== "home" && activeTab !== "admin";
+      case "embroidery":
+        return (
+          <EmbroideryPage
+            onOpenGallery={(sub) => {
+              navigate({
+                page: "gallery",
+                subcategory: sub,
+                title: SUBCATEGORY_LABELS[sub],
+              });
+            }}
+          />
+        );
+
+      case "blouse":
+        return (
+          <BlousePage
+            onOpenGallery={(sub) => {
+              navigate({
+                page: "gallery",
+                subcategory: sub,
+                title: SUBCATEGORY_LABELS[sub],
+              });
+            }}
+          />
+        );
+
+      case "bridal":
+        return (
+          <BridalPage
+            onOpenBridalGallery={(type) =>
+              navigate({ page: "bridal-gallery", bridalFilter: type })
+            }
+          />
+        );
+
+      case "orders":
+        return <StitchingOrdersPage />;
+
+      case "gallery": {
+        const p = currentPage as {
+          page: "gallery";
+          subcategory: Subcategory;
+          title?: string;
+        };
+        return (
+          <GalleryPage
+            subcategory={p.subcategory}
+            bridalFilter={null}
+            onSelectDesign={(design) =>
+              navigate({ page: "design-detail", design })
+            }
+          />
+        );
+      }
+
+      case "bridal-gallery": {
+        const p = currentPage as {
+          page: "bridal-gallery";
+          bridalFilter: "embroidery" | "blouse";
+        };
+        return (
+          <GalleryPage
+            subcategory=""
+            bridalFilter={p.bridalFilter}
+            onSelectDesign={(design) =>
+              navigate({ page: "design-detail", design })
+            }
+          />
+        );
+      }
+
+      case "design-detail": {
+        const p = currentPage as { page: "design-detail"; design: Design };
+        return <DesignDetailPage design={p.design} />;
+      }
+
+      default:
+        return <HomePage onNavigate={handleTabChange} />;
+    }
+  };
 
   return (
-    <>
-      {showSplash && <SplashScreen onComplete={() => setShowSplash(false)} />}
+    <div className="min-h-screen bg-background">
+      {/* Top Bar */}
+      <TopBar title={getPageTitle()} showBack={showBack} onBack={goBack} />
 
-      <div className="w-full max-w-[430px] mx-auto min-h-screen bg-background flex flex-col relative overflow-hidden">
-        {showHeader && (
-          <header className="flex items-center gap-3 px-4 pt-4 pb-3 border-b border-border/60 bg-white/95 backdrop-blur-sm flex-shrink-0 sticky top-0 z-30">
-            <div className="w-8 h-8 rounded-lg overflow-hidden bg-vew-sky flex items-center justify-center flex-shrink-0 relative">
-              <span className="absolute inset-0 flex items-center justify-center text-white text-[9px] font-extrabold z-0 select-none">
-                VEW
-              </span>
-              <img
-                src="/assets/generated/vew-logo.dim_200x200.png"
-                alt="VEW"
-                className="w-full h-full object-contain p-0.5 absolute inset-0 z-10"
-                onError={(e) => {
-                  e.currentTarget.style.display = "none";
-                }}
-              />
-            </div>
-            <div>
-              <h1 className="text-sm font-bold text-vew-navy leading-tight">
-                {screenTitle[activeTab].en}
-              </h1>
-              <p className="text-[10px] text-vew-sky leading-tight">
-                {screenTitle[activeTab].kn}
-              </p>
-            </div>
-          </header>
-        )}
-
-        {activeTab === "home" && !showSplash && (
-          <header className="flex items-center justify-between px-4 pt-4 pb-3 bg-white flex-shrink-0">
-            <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-xl overflow-hidden bg-vew-sky flex items-center justify-center relative">
-                <span className="absolute inset-0 flex items-center justify-center text-white text-[10px] font-extrabold z-0 select-none">
-                  VEW
-                </span>
-                <img
-                  src="/assets/generated/vew-logo.dim_200x200.png"
-                  alt="VEW"
-                  className="w-full h-full object-contain p-0.5 absolute inset-0 z-10"
-                  onError={(e) => {
-                    e.currentTarget.style.display = "none";
-                  }}
-                />
-              </div>
-              <div>
-                <p className="text-[10px] text-muted-foreground leading-tight">
-                  Welcome to
-                </p>
-                <h1 className="text-sm font-bold text-vew-navy leading-tight">
-                  Vishal Embroidery Works
-                </h1>
-              </div>
-            </div>
-
-            {/* VEW badge — decorative only, no longer the hidden admin trigger */}
-            <span className="bg-vew-sky-light text-vew-sky text-[10px] font-bold px-2 py-0.5 rounded-full select-none">
-              VEW
-            </span>
-          </header>
-        )}
-
-        {!showSplash && (
-          <main className="flex-1 flex flex-col overflow-hidden pb-[64px]">
-            {activeTab === "home" && (
-              <HomeScreen
-                onDesignClick={handleDesignClick}
-                onNavigate={handleTabChange}
-              />
-            )}
-            {activeTab === "embroidery" && (
-              <EmbroideryScreen onDesignClick={handleDesignClick} />
-            )}
-            {activeTab === "blouse" && (
-              <BlouseScreen onDesignClick={handleDesignClick} />
-            )}
-            {activeTab === "favourite" && (
-              <FavouriteScreen onDesignClick={handleDesignClick} />
-            )}
-            {activeTab === "customers" && <CustomersScreen />}
-            {activeTab === "admin" && (
-              <AdminScreen onBack={() => setActiveTab("home")} />
-            )}
-          </main>
-        )}
-
-        {!showSplash && (
-          <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] bg-white border-t border-border/60 shadow-nav z-40 pb-safe">
-            <div className="flex items-stretch">
-              {NAV_ITEMS.map((item) => {
-                const isActive = activeTab === item.id;
-                return (
-                  <button
-                    key={item.id}
-                    type="button"
-                    data-ocid={`${item.id}.tab`}
-                    onClick={() => handleTabChange(item.id)}
-                    className={`flex-1 flex flex-col items-center justify-center py-2 gap-0.5 transition-all duration-200 relative min-h-[60px] ${
-                      isActive
-                        ? item.id === "admin"
-                          ? "text-amber-500"
-                          : "text-vew-sky"
-                        : "text-muted-foreground hover:text-foreground"
-                    }`}
-                    aria-label={item.label}
-                    aria-current={isActive ? "page" : undefined}
-                  >
-                    {isActive && (
-                      <span
-                        className={`absolute top-0 left-1/2 -translate-x-1/2 w-5 h-0.5 rounded-b-full ${item.id === "admin" ? "bg-amber-500" : "bg-vew-sky"}`}
-                      />
-                    )}
-                    <span
-                      className={`transition-transform duration-200 ${isActive ? "scale-110" : "scale-100"}`}
-                    >
-                      {item.icon}
-                    </span>
-                    <span className="text-[8px] font-medium leading-tight">
-                      {item.label}
-                    </span>
-                    <span
-                      className={`text-[7px] leading-tight ${isActive ? (item.id === "admin" ? "text-amber-500/70" : "text-vew-sky/70") : "text-muted-foreground/60"}`}
-                    >
-                      {item.kannada}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </nav>
-        )}
-      </div>
-
-      <DesignDetailModal
-        design={selectedDesign}
-        open={detailOpen}
-        onClose={() => {
-          setDetailOpen(false);
-          setSelectedDesign(null);
+      {/* Main Content */}
+      <main
+        className="overflow-auto"
+        style={{
+          paddingTop: "56px",
+          paddingBottom: "60px",
+          minHeight: "100vh",
         }}
-      />
+      >
+        {renderContent()}
+      </main>
 
-      <Toaster
-        position="top-center"
-        toastOptions={{ classNames: { toast: "rounded-xl shadow-card" } }}
-      />
-    </>
+      {/* Bottom Nav */}
+      <BottomNav onTabChange={handleTabChange} />
+
+      {/* Admin PIN Screen */}
+      {isAdminOpen && !isAdminAuthenticated && <AdminPINScreen />}
+
+      {/* Admin Panel */}
+      {isAdminOpen && isAdminAuthenticated && <AdminPanel />}
+
+      {/* Compare Modal */}
+      {compareDesigns.length === 2 && <CompareModal />}
+
+      {/* Toast notifications */}
+      <Toaster position="top-center" richColors />
+    </div>
   );
 }

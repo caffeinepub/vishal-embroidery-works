@@ -1,33 +1,66 @@
-# Vishal Embroidery Works — Admin Panel Reset
+# Vishal Embroidery Works (VEW)
 
 ## Current State
 
-The app has a working PIN-based admin system with PIN `7391`. The admin panel includes:
-- Analytics, Update Design, Design Upload, Bulk Upload, and Customer tabs
-- `useAdminAuth.ts` manages PIN login with sessionStorage persistence
-- `adminSessionStore.ts` (Zustand) manages backend session state via `getAdminSession()` from `adminActor.ts`
-- `AdminScreen.tsx` renders the PIN screen first, then the full dashboard after login
-- `main.tsx` wraps everything in `InternetIdentityProvider` which calls `loadConfig()` and can throw "Cannot read properties of undefined (reading 'config')"
-- `useInternetIdentity.ts` calls `loadConfig()` inside `createAuthClient()` with no try/catch guard — this is the source of the undefined config crash
-- The admin panel currently works for core functions but breaks on some devices when config is undefined
+The existing project has a React 19 + TypeScript frontend with remnants of an ICP/Motoko backend. The previous versions used Cloudinary for image uploads and ICP canister for backend data. Those caused repeated failures (IC0508, config errors, auth loops). The current codebase has various admin panel iterations, localStorage-based design storage from the last rebuild, and a bottom nav with Home/Embroidery/Blouse/Favourite/Customers/Admin tabs.
 
 ## Requested Changes (Diff)
 
 ### Add
-- Safe try/catch guard around `loadConfig()` in `useInternetIdentity.ts` so config errors are caught and the provider gracefully falls back to idle state instead of crashing
-- Safe default for `config.ii_derivation_origin` in `useInternetIdentity.ts` (use empty string if undefined)
+
+- Complete offline-first localStorage data layer: `VEW_DESIGNS`, `VEW_CUSTOMERS`, `VEW_ORDERS`, `VEW_PAYMENTS`, `VEW_STITCHING_CART`
+- Auto design code system per subcategory: EMB###, RBE###, SIM###, BN###, DSG###, BRD###
+- Multi-image upload (max 5 per design) stored as base64 in localStorage
+- Bridal tag toggle on designs — tagged designs appear in Bridal section automatically
+- Bottom navigation: Home, Embroidery, Blouse, Bridal, Stitching Orders (5 tabs)
+- Home page: welcome banner + 3 quick access cards (Embroidery, Blouse, Bridal)
+- Embroidery page: 2-per-row subcategory grid (Embroidery, Ready Blouse Embroidery)
+- Blouse page: 2-per-row subcategory grid (Simple Blouse, Boat Neck, Bridal Blouse, Designer Blouse)
+- Bridal page: 2 sections side-by-side (Bridal Embroidery, Bridal Blouse) — populated from bridal-tagged designs
+- Design gallery page per subcategory with square thumbnail grid
+- Design detail page: image slider (swipe + pinch zoom + double-tap zoom), design code + title, buttons: Add Stitching Order, Share Design, Compare
+- Stitching Orders tab: temporary cart with thumbnail/code/title, remove button, total count, Clear All, Confirm Stitching Order
+- Confirm Order flow: search existing customer (by name/phone) or create new customer (name, phone, delivery date); on confirm: save order to customers DB, clear cart, WhatsApp share option
+- Admin access: VEW icon top-right → PIN entry (PIN: 4321)
+- Admin panel with 6 tabs: Upload, Bulk Upload, Designs, Customers, Orders, Dashboard
+- Upload Design: category, subcategory, title, up to 5 images, bridal toggle
+- Bulk Upload: 50–100 images, auto category/subcategory selection, auto code generation
+- Designs admin page: grouped by subcategory in 2-column layout, edit/delete/hide per design
+- Customers admin page: search bar, customer cards (name, phone, total orders, last order, status), edit/delete; customer profile with Orders, Tracking, Payments, Measurements, Notes sections
+- Payment system inside customer profile: total amount, advance paid, balance, auto payment status (Pending/Partial/Paid), payment history
+- Orders admin tab: filter by All/Pending/Cutting/Stitching/Ready/Completed; order cards with customer info, design image, code, dates, status; Mark as Cutting button, status dropdown, delete
+- Manual order add: admin can add an order for a customer with custom design (not in gallery) — fields: design name, code, description, delivery date, status
+- Admin Dashboard: stats cards (total designs, active orders, today's orders, pending/ready/completed orders, total customers, pending payments)
+- WhatsApp share after order confirm with formatted message template
 
 ### Modify
-- **`useAdminAuth.ts`**: Change `ADMIN_PIN` from `"7391"` to `"4321"` — this is the primary change requested
-- **`useInternetIdentity.ts`**: Wrap `loadConfig()` call in try/catch; if config loading fails, continue without `derivationOrigin` rather than crashing
-- **`adminActor.ts`**: Add a top-level try/catch around the entire `initAdminSession()` function body to ensure it never throws uncaught; return fallback session on any error
+
+- Replace entire app structure — remove all ICP/canister/Cloudinary dependencies
+- Replace bottom nav: remove Favourite tab, remove Admin tab from bottom nav (admin accessed via top-right VEW icon)
+- All images stored as base64 in localStorage (no external service)
 
 ### Remove
-- No files removed — the existing structure is correct and working
+
+- All ICP actor/canister code and imports
+- Cloudinary upload logic
+- Google OAuth, token bootstrap, adminActor.ts, useAdminAuth.ts, adminSessionStore.ts
+- ConfigReadyBoundary and session loading gates
+- Favourite tab and all favourite-related logic
+- Admin tab from bottom navigation
 
 ## Implementation Plan
 
-1. **`useAdminAuth.ts`**: Update `ADMIN_PIN` constant from `"7391"` to `"4321"`
-2. **`useInternetIdentity.ts`**: Wrap the `loadConfig()` call in `createAuthClient()` inside a try/catch block; if it throws, create `AuthClient` without `derivationOrigin` option so the app never crashes on missing config
-3. **`adminActor.ts`**: Wrap entire `initAdminSession()` in a top-level try/catch that returns the fallback session on any unhandled error
-4. Validate build passes with no TypeScript errors
+1. Create `src/lib/storage.ts` — typed localStorage helpers for all 5 data stores
+2. Create `src/lib/designCodes.ts` — auto-increment code generator per subcategory
+3. Create `src/lib/imageUtils.ts` — base64 conversion helpers for image uploads
+4. Create `src/store/appStore.ts` — Zustand store for cart (stitching orders), active tab, admin state
+5. Rewrite `App.tsx` — clean router with bottom nav (5 tabs) and top-right VEW admin icon
+6. Build pages: HomePage, EmbroideryPage, BlousePage, BridalPage, StitchingOrdersPage
+7. Build subcategory gallery page (GalleryPage) reused across subcategories
+8. Build DesignDetailPage with image slider, zoom, swipe
+9. Build admin PIN screen and AdminPanel with 6 tabs
+10. Build admin sub-pages: UploadDesign, BulkUpload, AdminDesigns, AdminCustomers, AdminOrders, AdminDashboard
+11. Build customer profile page with Orders/Tracking/Payments/Measurements/Notes tabs
+12. Build ConfirmOrderModal with customer search/create and WhatsApp share
+13. Build CompareModal for side-by-side design comparison
+14. Ensure all data operations are purely localStorage — no network calls
