@@ -4,7 +4,7 @@ import { useDesigns } from "../hooks/useFirestore";
 import type { Design } from "../lib/storage";
 
 interface BridalPageProps {
-  onSelectDesign: (design: Design) => void;
+  onSelectDesign: (design: Design, designs: Design[], index: number) => void;
 }
 
 type BridalFilter = "embroidery" | "blouse" | null;
@@ -170,12 +170,12 @@ export function BridalPage({ onSelectDesign }: BridalPageProps) {
             </div>
           ) : (
             <div className="grid grid-cols-2 gap-2 pb-4">
-              {galleryDesigns.map((design) => (
+              {galleryDesigns.map((design, idx) => (
                 <DesignCard
                   key={design.id}
                   design={design}
                   useWideRatio={false}
-                  onClick={() => onSelectDesign(design)}
+                  onClick={() => onSelectDesign(design, galleryDesigns, idx)}
                 />
               ))}
             </div>

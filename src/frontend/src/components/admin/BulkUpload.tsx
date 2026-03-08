@@ -32,6 +32,11 @@ export function BulkUpload({ onSaved }: { onSaved: () => void }) {
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
+    if (files.length > 100) {
+      toast.error("Maximum 100 images allowed at once");
+      e.target.value = "";
+      return;
+    }
     setSelectedFiles(files);
     setDone(false);
     e.target.value = "";
@@ -150,6 +155,14 @@ export function BulkUpload({ onSaved }: { onSaved: () => void }) {
             </option>
           ))}
         </select>
+        <p
+          data-ocid="bulk.helper_text.panel"
+          className="text-[11px] text-muted-foreground mt-1"
+        >
+          {subcategory === "embroidery"
+            ? "Recommended: Wide embroidery design up to 1536 × 657 px"
+            : "Recommended: 1200 × 1200 px (square)"}
+        </p>
       </div>
 
       {/* Bridal Toggle */}
@@ -182,7 +195,7 @@ export function BulkUpload({ onSaved }: { onSaved: () => void }) {
             <p className="text-sm font-semibold text-foreground">
               {selectedFiles.length > 0
                 ? `${selectedFiles.length} files selected`
-                : "Select 50–100 images"}
+                : "Select up to 100 images"}
             </p>
             <p className="text-xs text-muted-foreground">Tap to browse</p>
           </div>

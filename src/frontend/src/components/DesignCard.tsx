@@ -5,11 +5,12 @@ interface DesignCardProps {
   design: Design;
   onClick: () => void;
   /**
-   * "embroidery-contain" — full-image contain with black background, for Embroidery subcategory only.
+   * "wide-contain"      — fixed 2.3:1 aspect ratio (1536×657) with object-contain, black bg. Used for all Embroidery and Blouse subcategories.
+   * "embroidery-contain" — full-image contain with black background, auto height (legacy).
    * "wide"              — 16:9 aspect ratio with object-contain (legacy, kept for safety).
    * undefined/false     — default square object-cover layout.
    */
-  imageMode?: "embroidery-contain" | "wide" | false;
+  imageMode?: "wide-contain" | "embroidery-contain" | "wide" | false;
   /** @deprecated use imageMode="wide" */
   useWideRatio?: boolean;
 }
@@ -24,6 +25,7 @@ export function DesignCard({
 
   // Resolve effective mode
   const effectiveMode = imageMode ?? (useWideRatio ? "wide" : false);
+  const isWideContain = effectiveMode === "wide-contain";
   const isEmbroideryContain = effectiveMode === "embroidery-contain";
   const isWide = effectiveMode === "wide";
 
@@ -31,6 +33,64 @@ export function DesignCard({
   const subcategoryLabel =
     SUBCATEGORY_LABELS[design.subcategory as keyof typeof SUBCATEGORY_LABELS] ??
     design.subcategory;
+
+  if (isWideContain) {
+    // --- Wide-contain layout (2.3:1 fixed aspect ratio, 1536×657 px) ---
+    // Fixed aspect ratio container ensures all cards have same height.
+    // Image is contained within (no cropping), black background fills letterbox.
+    return (
+      <button
+        type="button"
+        data-ocid="design.card"
+        onClick={onClick}
+        className="group relative w-full text-left rounded-xl overflow-hidden bg-card shadow-card hover:shadow-card-hover transition-all active:scale-98 animate-fade-in"
+      >
+        {/* Fixed 2.3:1 aspect ratio image box (657/1536 = 42.77%) */}
+        <div className="relative w-full" style={{ paddingBottom: "42.77%" }}>
+          <div className="absolute inset-0 bg-black flex items-center justify-center">
+            {firstImage ? (
+              <img
+                src={firstImage}
+                alt={design.title}
+                className="w-full h-full object-contain"
+                style={{ objectPosition: "center" }}
+                loading="lazy"
+              />
+            ) : (
+              <div className="w-full h-full bg-black flex items-center justify-center">
+                <span className="text-3xl">🧵</span>
+              </div>
+            )}
+          </div>
+          {/* Multi-image indicator */}
+          {design.images.length > 1 && (
+            <div className="absolute top-1.5 right-1.5 bg-black/60 text-white text-[9px] px-1 py-0.5 rounded-full z-10">
+              1/{design.images.length}
+            </div>
+          )}
+          {/* 👑 Bridal crown icon */}
+          {design.isBridal && (
+            <div className="absolute top-1.5 left-1.5 w-6 h-6 flex items-center justify-center bg-yellow-400/90 rounded-full shadow-sm z-10">
+              <span className="text-[11px] leading-none">👑</span>
+            </div>
+          )}
+        </div>
+
+        {/* Bottom info section */}
+        <div className="bg-card px-2 py-2">
+          <p className="text-[10px] font-bold text-primary tracking-wide">
+            {design.designCode}
+          </p>
+          <p className="text-xs font-medium text-foreground line-clamp-1 mt-0.5">
+            {design.title}
+          </p>
+          <p className="text-[10px] text-muted-foreground mt-0.5">
+            {subcategoryLabel}
+          </p>
+        </div>
+      </button>
+    );
+  }
 
   if (isEmbroideryContain) {
     // --- Embroidery-contain layout ---
@@ -106,7 +166,8 @@ export function DesignCard({
             <img
               src={firstImage}
               alt={design.title}
-              className={`w-full h-full ${isWide ? "object-contain bg-muted" : "object-cover"}`}
+              className="w-full h-full object-contain"
+              style={{ background: "#000" }}
               loading="lazy"
             />
           ) : (

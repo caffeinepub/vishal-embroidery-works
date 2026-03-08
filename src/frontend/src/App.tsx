@@ -21,7 +21,12 @@ type PageEntry =
   | { page: "blouse" }
   | { page: "bridal" }
   | { page: "orders" }
-  | { page: "design-detail"; design: Design };
+  | {
+      page: "design-detail";
+      design: Design;
+      designs: Design[];
+      initialIndex: number;
+    };
 
 export default function App() {
   const { setActiveTab, isAdminOpen, isAdminAuthenticated, compareDesigns } =
@@ -50,8 +55,8 @@ export default function App() {
   );
 
   const handleSelectDesign = useCallback(
-    (design: Design) => {
-      navigate({ page: "design-detail", design });
+    (design: Design, designs: Design[], index: number) => {
+      navigate({ page: "design-detail", design, designs, initialIndex: index });
     },
     [navigate],
   );
@@ -70,8 +75,14 @@ export default function App() {
       case "orders":
         return "Stitching Orders";
       case "design-detail":
-        return (currentPage as { page: "design-detail"; design: Design }).design
-          .designCode;
+        return (
+          currentPage as {
+            page: "design-detail";
+            design: Design;
+            designs: Design[];
+            initialIndex: number;
+          }
+        ).design.designCode;
       default:
         return "Vishal Embroidery Works";
     }
@@ -103,8 +114,19 @@ export default function App() {
         return <StitchingOrdersPage />;
 
       case "design-detail": {
-        const p = currentPage as { page: "design-detail"; design: Design };
-        return <DesignDetailPage design={p.design} />;
+        const p = currentPage as {
+          page: "design-detail";
+          design: Design;
+          designs: Design[];
+          initialIndex: number;
+        };
+        return (
+          <DesignDetailPage
+            design={p.design}
+            designs={p.designs}
+            initialIndex={p.initialIndex}
+          />
+        );
       }
 
       default:

@@ -4,7 +4,7 @@ import { useDesigns } from "../hooks/useFirestore";
 import type { Design, Subcategory } from "../lib/storage";
 
 interface EmbroideryPageProps {
-  onSelectDesign: (design: Design) => void;
+  onSelectDesign: (design: Design, designs: Design[], index: number) => void;
 }
 
 const subcategories: {
@@ -138,16 +138,12 @@ export function EmbroideryPage({ onSelectDesign }: EmbroideryPageProps) {
             </div>
           ) : (
             <div className="grid grid-cols-2 gap-2 pb-4">
-              {galleryDesigns.map((design) => (
+              {galleryDesigns.map((design, idx) => (
                 <DesignCard
                   key={design.id}
                   design={design}
-                  imageMode={
-                    activeSubcategory === "embroidery"
-                      ? "embroidery-contain"
-                      : false
-                  }
-                  onClick={() => onSelectDesign(design)}
+                  imageMode="wide-contain"
+                  onClick={() => onSelectDesign(design, galleryDesigns, idx)}
                 />
               ))}
             </div>

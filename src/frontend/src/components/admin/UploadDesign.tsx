@@ -12,6 +12,31 @@ const CATEGORY_SUBCATEGORIES: Record<Category, Subcategory[]> = {
   blouse: ["simple-blouse", "boat-neck", "bridal-blouse", "designer-blouse"],
 };
 
+function getHelperText(sub: Subcategory): string {
+  if (sub === "embroidery")
+    return "Recommended: Wide embroidery design up to 1536 × 657 px";
+  return "Recommended: 1200 × 1200 px (square)";
+}
+
+async function validateImageAspect(
+  file: File,
+): Promise<{ valid: boolean; ratio: number }> {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const ratio = img.naturalWidth / img.naturalHeight;
+      resolve({ valid: true, ratio });
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      resolve({ valid: false, ratio: 0 });
+    };
+    img.src = url;
+  });
+}
+
 export function UploadDesign({ onSaved }: { onSaved: () => void }) {
   const [category, setCategory] = useState<Category>("embroidery");
   const [subcategory, setSubcategory] = useState<Subcategory>("embroidery");
@@ -33,13 +58,27 @@ export function UploadDesign({ onSaved }: { onSaved: () => void }) {
     const files = Array.from(e.target.files || []);
     if (images.length + files.length > 5) {
       toast.error("Maximum 5 images allowed");
+      e.target.value = "";
       return;
     }
     setIsLoading(true);
     try {
-      const newImages = await Promise.all(
-        files.slice(0, 5 - images.length).map(fileToBase64),
-      );
+      const slicedFiles = files.slice(0, 5 - images.length);
+
+      // Aspect ratio validation for embroidery subcategory (soft warning)
+      if (subcategory === "embroidery") {
+        for (let i = 0; i < slicedFiles.length; i++) {
+          const result = await validateImageAspect(slicedFiles[i]);
+          if (result.valid && (result.ratio < 2.2 || result.ratio > 2.5)) {
+            toast.warning(
+              `Image ${i + 1}: aspect ratio ${result.ratio.toFixed(2)}:1 — expected 2.2:1 to 2.5:1 for wide embroidery designs`,
+              { duration: 5000 },
+            );
+          }
+        }
+      }
+
+      const newImages = await Promise.all(slicedFiles.map(fileToBase64));
       setImages((prev) => [...prev, ...newImages]);
     } catch {
       toast.error("Failed to process images");
@@ -165,8 +204,11 @@ export function UploadDesign({ onSaved }: { onSaved: () => void }) {
         <p className="text-xs font-semibold text-muted-foreground block mb-1.5">
           IMAGES ({images.length}/5)
         </p>
-        <p className="text-[11px] text-muted-foreground mb-2">
-          Max 5 images. Recommended: 1200×1200px (square)
+        <p
+          data-ocid="upload.helper_text.panel"
+          className="text-[11px] text-muted-foreground mb-2"
+        >
+          Max 5 images. {getHelperText(subcategory)}
         </p>
 
         {images.length > 0 && (
@@ -176,7 +218,7 @@ export function UploadDesign({ onSaved }: { onSaved: () => void }) {
                 <img
                   src={img}
                   alt={`Preview ${idx + 1}`}
-                  className="w-full h-full object-cover rounded-lg"
+                  className="w-full h-full object-contain rounded-lg bg-muted"
                 />
                 <button
                   type="button"

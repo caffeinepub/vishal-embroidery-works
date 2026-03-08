@@ -93,7 +93,7 @@ export function ImageSlider({
 
   return (
     <div
-      className={`relative overflow-hidden image-slider select-none ${className}`}
+      className={`relative overflow-hidden image-slider select-none bg-black ${className}`}
     >
       <div
         className="w-full h-full"
@@ -107,8 +107,8 @@ export function ImageSlider({
         <img
           src={validImages[currentIndex]}
           alt={`${alt} ${currentIndex + 1}`}
-          className="w-full h-full object-cover zoom-img"
-          style={{ transform: `scale(${scale})` }}
+          className="w-full h-full object-contain zoom-img"
+          style={{ transform: `scale(${scale})`, background: "black" }}
           draggable={false}
         />
       </div>

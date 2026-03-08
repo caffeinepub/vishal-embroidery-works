@@ -6,7 +6,7 @@ import type { ActiveTab } from "../store/appStore";
 
 interface HomePageProps {
   onNavigate: (tab: ActiveTab) => void;
-  onSelectDesign: (design: Design) => void;
+  onSelectDesign: (design: Design, designs: Design[], index: number) => void;
 }
 
 const quickAccessCards = [
@@ -123,7 +123,11 @@ export function HomePage({ onNavigate, onSelectDesign }: HomePageProps) {
                     key={design.id}
                     data-ocid="home.search.item"
                     onMouseDown={() => {
-                      onSelectDesign(design);
+                      onSelectDesign(
+                        design,
+                        searchResults,
+                        searchResults.indexOf(design),
+                      );
                       setSearchQuery("");
                     }}
                     className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-muted/50 transition-colors text-left border-b border-border/40 last:border-b-0"
@@ -231,7 +235,13 @@ export function HomePage({ onNavigate, onSelectDesign }: HomePageProps) {
                 type="button"
                 key={design.id}
                 data-ocid="home.design_preview.card"
-                onClick={() => onSelectDesign(design)}
+                onClick={() =>
+                  onSelectDesign(
+                    design,
+                    latestEmbroidery,
+                    latestEmbroidery.indexOf(design),
+                  )
+                }
                 className="flex-shrink-0 w-28 text-left active:scale-[0.97] transition-transform"
               >
                 <div className="relative w-28 rounded-xl overflow-hidden bg-muted">
