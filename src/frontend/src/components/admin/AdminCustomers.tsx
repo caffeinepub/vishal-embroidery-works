@@ -1,20 +1,18 @@
 import { ChevronRight, Pencil, Plus, Search, Trash2, X } from "lucide-react";
-import { useCallback, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
+import { useCustomers, useOrders } from "../../hooks/useFirestore";
 import {
-  type Customer,
+  addCustomer,
   deleteCustomer,
-  formatDate,
-  generateId,
-  getCustomers,
-  getOrders,
-  saveCustomer,
   updateCustomer,
-} from "../../lib/storage";
+} from "../../lib/firestoreService";
+import { type Customer, formatDate, generateId } from "../../lib/storage";
 import { CustomerProfile } from "./CustomerProfile";
 
 export function AdminCustomers() {
-  const [customers, setCustomers] = useState(() => getCustomers());
+  const { data: customers } = useCustomers();
+  const { data: allOrders } = useOrders();
   const [searchQuery, setSearchQuery] = useState("");
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
@@ -26,9 +24,6 @@ export function AdminCustomers() {
   const [newPhone, setNewPhone] = useState("");
   const [newAddress, setNewAddress] = useState("");
 
-  const refresh = useCallback(() => setCustomers(getCustomers()), []);
-  const allOrders = getOrders();
-
   const filtered = searchQuery.trim()
     ? customers.filter(
         (c) =>
@@ -37,7 +32,7 @@ export function AdminCustomers() {
       )
     : customers;
 
-  const handleAddCustomer = () => {
+  const handleAddCustomer = async () => {
     if (!newName.trim()) {
       toast.error("Name is required");
       return;
@@ -59,20 +54,37 @@ export function AdminCustomers() {
       },
       createdAt: new Date().toISOString(),
     };
-    saveCustomer(customer);
-    refresh();
-    toast.success("Customer added");
-    setShowAddForm(false);
-    setNewName("");
-    setNewPhone("");
-    setNewAddress("");
+    try {
+      await addCustomer(customer);
+      toast.success("Customer added");
+      setShowAddForm(false);
+      setNewName("");
+      setNewPhone("");
+      setNewAddress("");
+    } catch {
+      toast.error("Failed to add customer");
+    }
   };
 
-  const handleDelete = (id: string) => {
-    deleteCustomer(id);
-    refresh();
-    setDeleteConfirmId(null);
-    toast.success("Customer deleted");
+  const handleDelete = async (id: string) => {
+    try {
+      await deleteCustomer(id);
+      setDeleteConfirmId(null);
+      toast.success("Customer deleted");
+    } catch {
+      toast.error("Failed to delete customer");
+    }
+  };
+
+  const handleEditSave = async () => {
+    if (!editingCustomer) return;
+    try {
+      await updateCustomer(editingCustomer);
+      setEditingCustomer(null);
+      toast.success("Customer updated");
+    } catch {
+      toast.error("Failed to update customer");
+    }
   };
 
   // If viewing customer profile
@@ -85,10 +97,7 @@ export function AdminCustomers() {
           <button
             type="button"
             data-ocid="admin.customer_profile.back.button"
-            onClick={() => {
-              setViewingCustomer(null);
-              refresh();
-            }}
+            onClick={() => setViewingCustomer(null)}
             className="p-1.5 rounded-full hover:bg-muted"
           >
             <X size={18} />
@@ -98,11 +107,10 @@ export function AdminCustomers() {
         <div className="flex-1 overflow-auto">
           <CustomerProfile
             customer={latestCustomer}
-            onClose={() => {
-              setViewingCustomer(null);
-              refresh();
+            onClose={() => setViewingCustomer(null)}
+            onUpdated={() => {
+              // Real-time hook auto-updates
             }}
-            onUpdated={refresh}
           />
         </div>
       </div>
@@ -334,14 +342,7 @@ export function AdminCustomers() {
             <button
               type="button"
               data-ocid="admin.edit_customer.save.button"
-              onClick={() => {
-                if (editingCustomer) {
-                  updateCustomer(editingCustomer);
-                  refresh();
-                  setEditingCustomer(null);
-                  toast.success("Customer updated");
-                }
-              }}
+              onClick={handleEditSave}
               className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-bold text-sm"
             >
               Save Changes

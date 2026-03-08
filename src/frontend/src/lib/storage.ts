@@ -97,7 +97,7 @@ export interface CartItem {
   designImage: string;
 }
 
-// Helpers
+// Cart (stays in localStorage — per-session only)
 function safeGet<T>(key: string): T[] {
   try {
     return JSON.parse(localStorage.getItem(key) || "[]") as T[];
@@ -114,91 +114,6 @@ function safeSet<T>(key: string, data: T[]): void {
   }
 }
 
-// Designs
-export function getDesigns(): Design[] {
-  return safeGet<Design>(KEYS.DESIGNS);
-}
-
-export function saveDesign(design: Design): void {
-  const designs = getDesigns();
-  designs.push(design);
-  safeSet(KEYS.DESIGNS, designs);
-}
-
-export function updateDesign(updated: Design): void {
-  const designs = getDesigns().map((d) => (d.id === updated.id ? updated : d));
-  safeSet(KEYS.DESIGNS, designs);
-}
-
-export function deleteDesign(id: string): void {
-  const designs = getDesigns().filter((d) => d.id !== id);
-  safeSet(KEYS.DESIGNS, designs);
-}
-
-// Customers
-export function getCustomers(): Customer[] {
-  return safeGet<Customer>(KEYS.CUSTOMERS);
-}
-
-export function saveCustomer(customer: Customer): void {
-  const customers = getCustomers();
-  customers.push(customer);
-  safeSet(KEYS.CUSTOMERS, customers);
-}
-
-export function updateCustomer(updated: Customer): void {
-  const customers = getCustomers().map((c) =>
-    c.id === updated.id ? updated : c,
-  );
-  safeSet(KEYS.CUSTOMERS, customers);
-}
-
-export function deleteCustomer(id: string): void {
-  const customers = getCustomers().filter((c) => c.id !== id);
-  safeSet(KEYS.CUSTOMERS, customers);
-}
-
-// Orders
-export function getOrders(): Order[] {
-  return safeGet<Order>(KEYS.ORDERS);
-}
-
-export function saveOrder(order: Order): void {
-  const orders = getOrders();
-  orders.push(order);
-  safeSet(KEYS.ORDERS, orders);
-}
-
-export function updateOrder(updated: Order): void {
-  const orders = getOrders().map((o) => (o.id === updated.id ? updated : o));
-  safeSet(KEYS.ORDERS, orders);
-}
-
-export function deleteOrder(id: string): void {
-  const orders = getOrders().filter((o) => o.id !== id);
-  safeSet(KEYS.ORDERS, orders);
-}
-
-// Payments
-export function getPayments(): Payment[] {
-  return safeGet<Payment>(KEYS.PAYMENTS);
-}
-
-export function savePayment(payment: Payment): void {
-  const payments = getPayments();
-  payments.push(payment);
-  safeSet(KEYS.PAYMENTS, payments);
-}
-
-export function getPaymentsForOrder(orderId: string): Payment[] {
-  return getPayments().filter((p) => p.orderId === orderId);
-}
-
-export function getPaymentsForCustomer(customerId: string): Payment[] {
-  return getPayments().filter((p) => p.customerId === customerId);
-}
-
-// Cart
 export function getCart(): CartItem[] {
   return safeGet<CartItem>(KEYS.CART);
 }

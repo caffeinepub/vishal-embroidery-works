@@ -1,14 +1,11 @@
 import { Upload } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { useDesigns } from "../../hooks/useFirestore";
 import { SUBCATEGORY_LABELS, generateDesignCode } from "../../lib/designCodes";
+import { addDesign } from "../../lib/firestoreService";
 import { filesToBase64Batch } from "../../lib/imageUtils";
-import {
-  type Category,
-  type Subcategory,
-  generateId,
-  saveDesign,
-} from "../../lib/storage";
+import { type Category, type Subcategory, generateId } from "../../lib/storage";
 
 const CATEGORY_SUBCATEGORIES: Record<Category, Subcategory[]> = {
   embroidery: ["embroidery", "ready-blouse-embroidery"],
@@ -25,6 +22,8 @@ export function BulkUpload({ onSaved }: { onSaved: () => void }) {
     total: number;
   } | null>(null);
   const [done, setDone] = useState(false);
+
+  const { data: designs } = useDesigns();
 
   const handleCategoryChange = (cat: Category) => {
     setCategory(cat);
@@ -47,14 +46,33 @@ export function BulkUpload({ onSaved }: { onSaved: () => void }) {
     const BATCH = 10;
     setProgress({ current: 0, total: selectedFiles.length });
 
+    // Keep a local counter for design codes (since Firestore updates are async)
+    const existingCount = designs.filter(
+      (d) => d.subcategory === subcategory,
+    ).length;
+
     try {
+      let savedCount = 0;
       for (let i = 0; i < selectedFiles.length; i += BATCH) {
         const batch = selectedFiles.slice(i, i + BATCH);
         const batchImages = await filesToBase64Batch(batch, BATCH);
 
-        for (const imgData of batchImages) {
-          const code = generateDesignCode(subcategory);
-          saveDesign({
+        const savePromises = batchImages.map((imgData, batchIdx) => {
+          const localCount = existingCount + savedCount + batchIdx + 1;
+          const prefix =
+            subcategory === "embroidery"
+              ? "EMB"
+              : subcategory === "ready-blouse-embroidery"
+                ? "RBE"
+                : subcategory === "simple-blouse"
+                  ? "SIM"
+                  : subcategory === "boat-neck"
+                    ? "BN"
+                    : subcategory === "bridal-blouse"
+                      ? "BRD"
+                      : "DSG";
+          const code = `${prefix}${String(localCount).padStart(3, "0")}`;
+          return addDesign({
             id: generateId(),
             designCode: code,
             title: code,
@@ -65,7 +83,10 @@ export function BulkUpload({ onSaved }: { onSaved: () => void }) {
             isHidden: false,
             createdAt: new Date().toISOString(),
           });
-        }
+        });
+
+        await Promise.all(savePromises);
+        savedCount += batchImages.length;
 
         setProgress({
           current: Math.min(i + BATCH, selectedFiles.length),
@@ -134,7 +155,7 @@ export function BulkUpload({ onSaved }: { onSaved: () => void }) {
       {/* Bridal Toggle */}
       <div className="flex items-center justify-between bg-card border border-border rounded-xl p-3">
         <p className="text-sm font-semibold text-foreground">
-          Tag all as Bridal
+          Tag all as Bridal 👑
         </p>
         <button
           type="button"
@@ -179,7 +200,7 @@ export function BulkUpload({ onSaved }: { onSaved: () => void }) {
       {progress && (
         <div data-ocid="bulk.progress.loading_state">
           <div className="flex justify-between text-xs text-muted-foreground mb-1">
-            <span>Processing images...</span>
+            <span>Uploading to cloud...</span>
             <span>
               {progress.current}/{progress.total}
             </span>
@@ -212,7 +233,7 @@ export function BulkUpload({ onSaved }: { onSaved: () => void }) {
         className="w-full py-3.5 rounded-xl bg-primary text-primary-foreground font-bold text-sm active:scale-[0.98] disabled:opacity-60"
       >
         {progress
-          ? `Processing ${progress.current}/${progress.total}...`
+          ? `Uploading ${progress.current}/${progress.total}...`
           : `Upload All (${selectedFiles.length} images)`}
       </button>
     </div>

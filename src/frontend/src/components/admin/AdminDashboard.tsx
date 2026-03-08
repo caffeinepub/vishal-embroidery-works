@@ -1,9 +1,9 @@
 import {
-  getCustomers,
-  getDesigns,
-  getOrders,
-  getPayments,
-} from "../../lib/storage";
+  useCustomers,
+  useDesigns,
+  useOrders,
+  usePayments,
+} from "../../hooks/useFirestore";
 
 interface StatCardProps {
   label: string;
@@ -25,10 +25,10 @@ function StatCard({ label, value, color, emoji }: StatCardProps) {
 }
 
 export function AdminDashboard() {
-  const designs = getDesigns();
-  const customers = getCustomers();
-  const orders = getOrders();
-  const payments = getPayments();
+  const { data: designs } = useDesigns();
+  const { data: customers } = useCustomers();
+  const { data: orders } = useOrders();
+  const { data: payments } = usePayments();
 
   const today = new Date().toDateString();
   const todayOrders = orders.filter(

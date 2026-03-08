@@ -1,14 +1,9 @@
 import { ChevronDown, Plus, Trash2 } from "lucide-react";
-import { useCallback, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
-import {
-  type Order,
-  type OrderStatus,
-  deleteOrder,
-  formatDate,
-  getOrders,
-  updateOrder,
-} from "../../lib/storage";
+import { useOrders } from "../../hooks/useFirestore";
+import { deleteOrder, updateOrder } from "../../lib/firestoreService";
+import { type Order, type OrderStatus, formatDate } from "../../lib/storage";
 import { ManualOrderModal } from "./ManualOrderModal";
 
 const ALL_STATUSES: OrderStatus[] = [
@@ -29,13 +24,11 @@ const STATUS_COLORS: Record<OrderStatus, string> = {
 };
 
 export function AdminOrders() {
-  const [orders, setOrders] = useState(() => getOrders());
+  const { data: orders } = useOrders();
   const [filter, setFilter] = useState<FilterStatus>("All");
   const [showManualModal, setShowManualModal] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [statusDropdownId, setStatusDropdownId] = useState<string | null>(null);
-
-  const refresh = useCallback(() => setOrders(getOrders()), []);
 
   const filtered =
     filter === "All" ? orders : orders.filter((o) => o.status === filter);
@@ -44,18 +37,24 @@ export function AdminOrders() {
     (a, b) => new Date(b.orderDate).getTime() - new Date(a.orderDate).getTime(),
   );
 
-  const handleStatusChange = (order: Order, newStatus: OrderStatus) => {
-    updateOrder({ ...order, status: newStatus });
-    refresh();
-    setStatusDropdownId(null);
-    toast.success(`Status updated to ${newStatus}`);
+  const handleStatusChange = async (order: Order, newStatus: OrderStatus) => {
+    try {
+      await updateOrder({ ...order, status: newStatus });
+      setStatusDropdownId(null);
+      toast.success(`Status updated to ${newStatus}`);
+    } catch {
+      toast.error("Failed to update status");
+    }
   };
 
-  const handleDelete = (id: string) => {
-    deleteOrder(id);
-    refresh();
-    setDeleteConfirmId(null);
-    toast.success("Order deleted");
+  const handleDelete = async (id: string) => {
+    try {
+      await deleteOrder(id);
+      setDeleteConfirmId(null);
+      toast.success("Order deleted");
+    } catch {
+      toast.error("Failed to delete order");
+    }
   };
 
   const filters: FilterStatus[] = ["All", ...ALL_STATUSES];
@@ -239,7 +238,9 @@ export function AdminOrders() {
       {showManualModal && (
         <ManualOrderModal
           onClose={() => setShowManualModal(false)}
-          onSaved={refresh}
+          onSaved={() => {
+            // Real-time hook auto-updates
+          }}
         />
       )}
 

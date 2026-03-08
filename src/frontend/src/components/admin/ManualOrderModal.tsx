@@ -1,14 +1,9 @@
 import { Plus, Search, X } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-import {
-  type Customer,
-  type OrderStatus,
-  generateId,
-  getCustomers,
-  saveCustomer,
-  saveOrder,
-} from "../../lib/storage";
+import { useCustomers } from "../../hooks/useFirestore";
+import { addCustomer, addOrder } from "../../lib/firestoreService";
+import { type Customer, type OrderStatus, generateId } from "../../lib/storage";
 
 interface ManualOrderModalProps {
   onClose: () => void;
@@ -16,6 +11,7 @@ interface ManualOrderModalProps {
 }
 
 export function ManualOrderModal({ onClose, onSaved }: ManualOrderModalProps) {
+  const { data: customers } = useCustomers();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(
     null,
@@ -30,8 +26,8 @@ export function ManualOrderModal({ onClose, onSaved }: ManualOrderModalProps) {
   const [status, setStatus] = useState<OrderStatus>("Pending");
   const [totalAmount, setTotalAmount] = useState("");
   const [advancePaid, setAdvancePaid] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const customers = getCustomers();
   const filteredCustomers = searchQuery.trim()
     ? customers.filter(
         (c) =>
@@ -40,7 +36,7 @@ export function ManualOrderModal({ onClose, onSaved }: ManualOrderModalProps) {
       )
     : customers.slice(0, 5);
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (mode === "search" && !selectedCustomer) {
       toast.error("Select a customer");
       return;
@@ -58,65 +54,72 @@ export function ManualOrderModal({ onClose, onSaved }: ManualOrderModalProps) {
       return;
     }
 
-    let customerId: string;
-    let customerName: string;
-    let customerPhone: string;
+    setIsSubmitting(true);
+    try {
+      let customerId: string;
+      let customerName: string;
+      let customerPhone: string;
 
-    if (mode === "new" || !selectedCustomer) {
-      const newCustomer: Customer = {
+      if (mode === "new" || !selectedCustomer) {
+        const newCustomer: Customer = {
+          id: generateId(),
+          name: newName.trim(),
+          phone: newPhone.trim(),
+          address: "",
+          notes: "",
+          measurements: {
+            chest: "",
+            waist: "",
+            shoulder: "",
+            sleeveLength: "",
+            blouseLength: "",
+            frontNeckDepth: "",
+            backNeckDepth: "",
+          },
+          createdAt: new Date().toISOString(),
+        };
+        await addCustomer(newCustomer);
+        customerId = newCustomer.id;
+        customerName = newCustomer.name;
+        customerPhone = newCustomer.phone;
+      } else {
+        customerId = selectedCustomer.id;
+        customerName = selectedCustomer.name;
+        customerPhone = selectedCustomer.phone;
+      }
+
+      const code = designCode.trim() || `MAN${Date.now().toString().slice(-4)}`;
+      await addOrder({
         id: generateId(),
-        name: newName.trim(),
-        phone: newPhone.trim(),
-        address: "",
-        notes: "",
-        measurements: {
-          chest: "",
-          waist: "",
-          shoulder: "",
-          sleeveLength: "",
-          blouseLength: "",
-          frontNeckDepth: "",
-          backNeckDepth: "",
-        },
-        createdAt: new Date().toISOString(),
-      };
-      saveCustomer(newCustomer);
-      customerId = newCustomer.id;
-      customerName = newCustomer.name;
-      customerPhone = newCustomer.phone;
-    } else {
-      customerId = selectedCustomer.id;
-      customerName = selectedCustomer.name;
-      customerPhone = selectedCustomer.phone;
+        customerId,
+        customerName,
+        customerPhone,
+        designs: [
+          {
+            designId: generateId(),
+            designCode: code,
+            designTitle: designName.trim(),
+            designImage: "",
+            isManual: true,
+            manualDescription: description.trim(),
+          },
+        ],
+        deliveryDate,
+        status,
+        totalAmount: Number.parseFloat(totalAmount) || 0,
+        advancePaid: Number.parseFloat(advancePaid) || 0,
+        orderDate: new Date().toISOString(),
+        notes: description.trim(),
+      });
+
+      toast.success("Manual order added");
+      onSaved();
+      onClose();
+    } catch {
+      toast.error("Failed to save order");
+    } finally {
+      setIsSubmitting(false);
     }
-
-    const code = designCode.trim() || `MAN${Date.now().toString().slice(-4)}`;
-    saveOrder({
-      id: generateId(),
-      customerId,
-      customerName,
-      customerPhone,
-      designs: [
-        {
-          designId: generateId(),
-          designCode: code,
-          designTitle: designName.trim(),
-          designImage: "",
-          isManual: true,
-          manualDescription: description.trim(),
-        },
-      ],
-      deliveryDate,
-      status,
-      totalAmount: Number.parseFloat(totalAmount) || 0,
-      advancePaid: Number.parseFloat(advancePaid) || 0,
-      orderDate: new Date().toISOString(),
-      notes: description.trim(),
-    });
-
-    toast.success("Manual order added");
-    onSaved();
-    onClose();
   };
 
   return (
@@ -305,9 +308,10 @@ export function ManualOrderModal({ onClose, onSaved }: ManualOrderModalProps) {
             type="button"
             data-ocid="manual_order.save.button"
             onClick={handleSave}
-            className="w-full py-3.5 rounded-xl bg-primary text-primary-foreground font-bold text-sm"
+            disabled={isSubmitting}
+            className="w-full py-3.5 rounded-xl bg-primary text-primary-foreground font-bold text-sm disabled:opacity-60"
           >
-            Add Order
+            {isSubmitting ? "Saving..." : "Add Order"}
           </button>
         </div>
       </div>

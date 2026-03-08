@@ -1,8 +1,9 @@
 import { Search } from "lucide-react";
 import { useState } from "react";
 import { DesignCard } from "../components/DesignCard";
+import { useDesigns } from "../hooks/useFirestore";
 import { SUBCATEGORY_LABELS } from "../lib/designCodes";
-import { type Design, getDesigns } from "../lib/storage";
+import type { Design } from "../lib/storage";
 
 interface GalleryPageProps {
   subcategory: string;
@@ -16,7 +17,7 @@ export function GalleryPage({
   onSelectDesign,
 }: GalleryPageProps) {
   const [searchQuery, setSearchQuery] = useState("");
-  const [designs, _setDesigns] = useState(() => getDesigns());
+  const { data: designs, loading } = useDesigns();
 
   // Filter designs
   let filtered = designs.filter((d) => !d.isHidden);
@@ -42,6 +43,8 @@ export function GalleryPage({
     ? `Bridal ${bridalFilter === "embroidery" ? "Embroidery" : "Blouse"}`
     : SUBCATEGORY_LABELS[subcategory as keyof typeof SUBCATEGORY_LABELS] ||
       subcategory;
+
+  const isEmbroiderySubcategory = subcategory === "embroidery";
 
   return (
     <div className="min-h-full">
@@ -76,7 +79,19 @@ export function GalleryPage({
       </div>
 
       {/* Grid */}
-      {filtered.length === 0 ? (
+      {loading ? (
+        <div className="px-4 grid grid-cols-2 gap-2 pb-4">
+          {[1, 2, 3, 4].map((i) => (
+            <div
+              key={i}
+              className="rounded-xl bg-muted animate-pulse"
+              style={{
+                paddingBottom: isEmbroiderySubcategory ? "56.25%" : "100%",
+              }}
+            />
+          ))}
+        </div>
+      ) : filtered.length === 0 ? (
         <div
           className="flex flex-col items-center justify-center py-16 px-8"
           data-ocid="gallery.empty_state"
@@ -92,11 +107,12 @@ export function GalleryPage({
           </p>
         </div>
       ) : (
-        <div className="px-4 grid grid-cols-3 gap-2 pb-4">
+        <div className="px-4 grid grid-cols-2 gap-2 pb-4">
           {filtered.map((design) => (
             <DesignCard
               key={design.id}
               design={design}
+              useWideRatio={isEmbroiderySubcategory}
               onClick={() => onSelectDesign(design)}
             />
           ))}

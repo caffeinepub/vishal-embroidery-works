@@ -1,15 +1,9 @@
 import { MessageCircle, Plus, Search, X } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-import {
-  type CartItem,
-  type Customer,
-  generateId,
-  getCustomers,
-  saveCustomer,
-  saveOrder,
-  savePayment,
-} from "../lib/storage";
+import { useCustomers } from "../hooks/useFirestore";
+import { addCustomer, addOrder, addPayment } from "../lib/firestoreService";
+import { type CartItem, type Customer, generateId } from "../lib/storage";
 import { useAppStore } from "../store/appStore";
 
 interface ConfirmOrderModalProps {
@@ -24,6 +18,7 @@ export function ConfirmOrderModal({
   onConfirmed,
 }: ConfirmOrderModalProps) {
   const { clearCart } = useAppStore();
+  const { data: customers } = useCustomers();
   const [mode, setMode] = useState<"search" | "new">("search");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(
@@ -36,6 +31,7 @@ export function ConfirmOrderModal({
   const [advancePaid, setAdvancePaid] = useState("");
   const [notes, setNotes] = useState("");
   const [step, setStep] = useState<"customer" | "payment" | "done">("customer");
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [confirmedOrder, setConfirmedOrder] = useState<{
     id: string;
     customerName: string;
@@ -47,7 +43,6 @@ export function ConfirmOrderModal({
     designCodes: string[];
   } | null>(null);
 
-  const customers = getCustomers();
   const filteredCustomers = searchQuery.trim()
     ? customers.filter(
         (c) =>
@@ -76,87 +71,94 @@ export function ConfirmOrderModal({
     setStep("payment");
   };
 
-  const handleConfirm = () => {
-    let customerId: string;
-    let customerName: string;
-    let customerPhone: string;
+  const handleConfirm = async () => {
+    setIsSubmitting(true);
+    try {
+      let customerId: string;
+      let customerName: string;
+      let customerPhone: string;
 
-    if (mode === "new" || !selectedCustomer) {
-      // Create new customer
-      const newCustomer: Customer = {
-        id: generateId(),
-        name: newName.trim(),
-        phone: newPhone.trim(),
-        address: "",
-        notes: "",
-        measurements: {
-          chest: "",
-          waist: "",
-          shoulder: "",
-          sleeveLength: "",
-          blouseLength: "",
-          frontNeckDepth: "",
-          backNeckDepth: "",
-        },
-        createdAt: new Date().toISOString(),
-      };
-      saveCustomer(newCustomer);
-      customerId = newCustomer.id;
-      customerName = newCustomer.name;
-      customerPhone = newCustomer.phone;
-    } else {
-      customerId = selectedCustomer.id;
-      customerName = selectedCustomer.name;
-      customerPhone = selectedCustomer.phone;
-    }
+      if (mode === "new" || !selectedCustomer) {
+        // Create new customer
+        const newCustomer: Customer = {
+          id: generateId(),
+          name: newName.trim(),
+          phone: newPhone.trim(),
+          address: "",
+          notes: "",
+          measurements: {
+            chest: "",
+            waist: "",
+            shoulder: "",
+            sleeveLength: "",
+            blouseLength: "",
+            frontNeckDepth: "",
+            backNeckDepth: "",
+          },
+          createdAt: new Date().toISOString(),
+        };
+        await addCustomer(newCustomer);
+        customerId = newCustomer.id;
+        customerName = newCustomer.name;
+        customerPhone = newCustomer.phone;
+      } else {
+        customerId = selectedCustomer.id;
+        customerName = selectedCustomer.name;
+        customerPhone = selectedCustomer.phone;
+      }
 
-    const orderId = generateId();
-    const order = {
-      id: orderId,
-      customerId,
-      customerName,
-      customerPhone,
-      designs: cartItems.map((item) => ({
-        designId: item.designId,
-        designCode: item.designCode,
-        designTitle: item.designTitle,
-        designImage: item.designImage,
-        isManual: false,
-      })),
-      deliveryDate,
-      status: "Pending" as const,
-      totalAmount: total,
-      advancePaid: advance,
-      orderDate: new Date().toISOString(),
-      notes: notes.trim(),
-    };
-    saveOrder(order);
-
-    if (advance > 0) {
-      savePayment({
-        id: generateId(),
-        orderId,
+      const orderId = generateId();
+      const order = {
+        id: orderId,
         customerId,
-        amount: advance,
-        type: "advance",
-        date: new Date().toISOString(),
-        notes: "Advance payment on order creation",
-      });
-    }
+        customerName,
+        customerPhone,
+        designs: cartItems.map((item) => ({
+          designId: item.designId,
+          designCode: item.designCode,
+          designTitle: item.designTitle,
+          designImage: item.designImage,
+          isManual: false,
+        })),
+        deliveryDate,
+        status: "Pending" as const,
+        totalAmount: total,
+        advancePaid: advance,
+        orderDate: new Date().toISOString(),
+        notes: notes.trim(),
+      };
+      await addOrder(order);
 
-    clearCart();
-    setConfirmedOrder({
-      id: orderId,
-      customerName,
-      customerPhone,
-      deliveryDate,
-      totalAmount: total,
-      advancePaid: advance,
-      balance,
-      designCodes: cartItems.map((i) => `${i.designCode} - ${i.designTitle}`),
-    });
-    setStep("done");
-    toast.success("Order confirmed successfully!");
+      if (advance > 0) {
+        await addPayment({
+          id: generateId(),
+          orderId,
+          customerId,
+          amount: advance,
+          type: "advance",
+          date: new Date().toISOString(),
+          notes: "Advance payment on order creation",
+        });
+      }
+
+      clearCart();
+      setConfirmedOrder({
+        id: orderId,
+        customerName,
+        customerPhone,
+        deliveryDate,
+        totalAmount: total,
+        advancePaid: advance,
+        balance,
+        designCodes: cartItems.map((i) => `${i.designCode} - ${i.designTitle}`),
+      });
+      setStep("done");
+      toast.success("Order confirmed successfully!");
+    } catch {
+      toast.error("Failed to save order. Check connection.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const shareOnWhatsApp = () => {
@@ -543,9 +545,10 @@ export function ConfirmOrderModal({
                 type="button"
                 data-ocid="order.confirm.button"
                 onClick={handleConfirm}
-                className="flex-1 py-3.5 rounded-xl bg-primary text-primary-foreground font-bold text-sm"
+                disabled={isSubmitting}
+                className="flex-1 py-3.5 rounded-xl bg-primary text-primary-foreground font-bold text-sm disabled:opacity-60"
               >
-                Confirm Order
+                {isSubmitting ? "Saving..." : "Confirm Order"}
               </button>
             </div>
           )}

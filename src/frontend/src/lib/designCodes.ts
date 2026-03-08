@@ -1,4 +1,4 @@
-import { type Subcategory, getDesigns } from "./storage";
+import type { Design, Subcategory } from "./storage";
 
 const PREFIXES: Record<Subcategory, string> = {
   embroidery: "EMB",
@@ -18,11 +18,15 @@ export const SUBCATEGORY_LABELS: Record<Subcategory, string> = {
   "designer-blouse": "Designer Blouse",
 };
 
-export function generateDesignCode(subcategory: Subcategory): string {
-  const designs = getDesigns().filter((d) => d.subcategory === subcategory);
-  const next = designs.length + 1;
-  const prefix = PREFIXES[subcategory];
-  return `${prefix}${String(next).padStart(3, "0")}`;
+export function generateDesignCode(
+  subcategory: Subcategory,
+  existingDesigns: Design[],
+): string {
+  const count = existingDesigns.filter(
+    (d) => d.subcategory === subcategory,
+  ).length;
+  const next = count + 1;
+  return `${PREFIXES[subcategory]}${String(next).padStart(3, "0")}`;
 }
 
 export function getPrefix(subcategory: Subcategory): string {

@@ -1,14 +1,11 @@
 import { Upload, X } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { useDesigns } from "../../hooks/useFirestore";
 import { SUBCATEGORY_LABELS, generateDesignCode } from "../../lib/designCodes";
+import { addDesign } from "../../lib/firestoreService";
 import { fileToBase64 } from "../../lib/imageUtils";
-import {
-  type Category,
-  type Subcategory,
-  generateId,
-  saveDesign,
-} from "../../lib/storage";
+import { type Category, type Subcategory, generateId } from "../../lib/storage";
 
 const CATEGORY_SUBCATEGORIES: Record<Category, Subcategory[]> = {
   embroidery: ["embroidery", "ready-blouse-embroidery"],
@@ -23,7 +20,9 @@ export function UploadDesign({ onSaved }: { onSaved: () => void }) {
   const [isBridal, setIsBridal] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
-  const previewCode = generateDesignCode(subcategory);
+  const { data: designs } = useDesigns();
+
+  const previewCode = generateDesignCode(subcategory, designs);
 
   const handleCategoryChange = (cat: Category) => {
     setCategory(cat);
@@ -54,7 +53,7 @@ export function UploadDesign({ onSaved }: { onSaved: () => void }) {
     setImages((prev) => prev.filter((_, i) => i !== idx));
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!title.trim()) {
       toast.error("Design title is required");
       return;
@@ -64,26 +63,33 @@ export function UploadDesign({ onSaved }: { onSaved: () => void }) {
       return;
     }
 
-    const code = generateDesignCode(subcategory);
-    const design = {
-      id: generateId(),
-      designCode: code,
-      title: title.trim(),
-      images,
-      category,
-      subcategory,
-      isBridal,
-      isHidden: false,
-      createdAt: new Date().toISOString(),
-    };
-    saveDesign(design);
-    toast.success(`Design ${code} saved successfully!`);
-    onSaved();
+    setIsLoading(true);
+    try {
+      const code = generateDesignCode(subcategory, designs);
+      const design = {
+        id: generateId(),
+        designCode: code,
+        title: title.trim(),
+        images,
+        category,
+        subcategory,
+        isBridal,
+        isHidden: false,
+        createdAt: new Date().toISOString(),
+      };
+      await addDesign(design);
+      toast.success(`Design ${code} saved successfully!`);
+      onSaved();
 
-    // Reset
-    setTitle("");
-    setImages([]);
-    setIsBridal(false);
+      // Reset
+      setTitle("");
+      setImages([]);
+      setIsBridal(false);
+    } catch {
+      toast.error("Failed to save design. Check connection.");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -210,7 +216,7 @@ export function UploadDesign({ onSaved }: { onSaved: () => void }) {
       <div className="flex items-center justify-between bg-card border border-border rounded-xl p-3">
         <div>
           <p className="text-sm font-semibold text-foreground">
-            Tag as Bridal Design
+            Tag as Bridal Design 👑
           </p>
           <p className="text-xs text-muted-foreground">
             Shows in Bridal collection
@@ -240,7 +246,7 @@ export function UploadDesign({ onSaved }: { onSaved: () => void }) {
         disabled={isLoading}
         className="w-full py-3.5 rounded-xl bg-primary text-primary-foreground font-bold text-sm active:scale-[0.98] disabled:opacity-60"
       >
-        {isLoading ? "Processing..." : "Save Design"}
+        {isLoading ? "Saving..." : "Save Design"}
       </button>
     </div>
   );

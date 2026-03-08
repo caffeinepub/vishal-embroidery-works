@@ -5,24 +5,14 @@ import { CompareModal } from "./components/CompareModal";
 import { TopBar } from "./components/TopBar";
 import { AdminPanel } from "./components/admin/AdminPanel";
 import { Toaster } from "./components/ui/sonner";
-import type { Design, Subcategory } from "./lib/storage";
+import type { Design } from "./lib/storage";
 import { BlousePage } from "./pages/BlousePage";
 import { BridalPage } from "./pages/BridalPage";
 import { DesignDetailPage } from "./pages/DesignDetailPage";
 import { EmbroideryPage } from "./pages/EmbroideryPage";
-import { GalleryPage } from "./pages/GalleryPage";
 import { HomePage } from "./pages/HomePage";
 import { StitchingOrdersPage } from "./pages/StitchingOrdersPage";
 import { type ActiveTab, useAppStore } from "./store/appStore";
-
-const SUBCATEGORY_LABELS: Record<Subcategory, string> = {
-  embroidery: "Embroidery",
-  "ready-blouse-embroidery": "Ready Blouse Embroidery",
-  "simple-blouse": "Simple Blouse",
-  "boat-neck": "Boat Neck Blouse",
-  "bridal-blouse": "Bridal Blouse",
-  "designer-blouse": "Designer Blouse",
-};
 
 // Page stack navigation
 type PageEntry =
@@ -31,8 +21,6 @@ type PageEntry =
   | { page: "blouse" }
   | { page: "bridal" }
   | { page: "orders" }
-  | { page: "gallery"; subcategory: Subcategory; title?: string }
-  | { page: "bridal-gallery"; bridalFilter: "embroidery" | "blouse" }
   | { page: "design-detail"; design: Design };
 
 export default function App() {
@@ -61,6 +49,13 @@ export default function App() {
     [setActiveTab],
   );
 
+  const handleSelectDesign = useCallback(
+    (design: Design) => {
+      navigate({ page: "design-detail", design });
+    },
+    [navigate],
+  );
+
   // Page title for TopBar
   const getPageTitle = (): string => {
     switch (currentPage.page) {
@@ -74,25 +69,6 @@ export default function App() {
         return "Bridal Collection";
       case "orders":
         return "Stitching Orders";
-      case "gallery":
-        return (
-          (
-            currentPage as {
-              page: "gallery";
-              subcategory: Subcategory;
-              title?: string;
-            }
-          ).title || "Gallery"
-        );
-      case "bridal-gallery":
-        return (
-          currentPage as {
-            page: "bridal-gallery";
-            bridalFilter: "embroidery" | "blouse";
-          }
-        ).bridalFilter === "embroidery"
-          ? "Bridal Embroidery"
-          : "Bridal Blouse";
       case "design-detail":
         return (currentPage as { page: "design-detail"; design: Design }).design
           .designCode;
@@ -107,78 +83,24 @@ export default function App() {
   const renderContent = () => {
     switch (currentPage.page) {
       case "home":
-        return <HomePage onNavigate={(tab) => handleTabChange(tab)} />;
+        return (
+          <HomePage
+            onNavigate={handleTabChange}
+            onSelectDesign={handleSelectDesign}
+          />
+        );
 
       case "embroidery":
-        return (
-          <EmbroideryPage
-            onOpenGallery={(sub) => {
-              navigate({
-                page: "gallery",
-                subcategory: sub,
-                title: SUBCATEGORY_LABELS[sub],
-              });
-            }}
-          />
-        );
+        return <EmbroideryPage onSelectDesign={handleSelectDesign} />;
 
       case "blouse":
-        return (
-          <BlousePage
-            onOpenGallery={(sub) => {
-              navigate({
-                page: "gallery",
-                subcategory: sub,
-                title: SUBCATEGORY_LABELS[sub],
-              });
-            }}
-          />
-        );
+        return <BlousePage onSelectDesign={handleSelectDesign} />;
 
       case "bridal":
-        return (
-          <BridalPage
-            onOpenBridalGallery={(type) =>
-              navigate({ page: "bridal-gallery", bridalFilter: type })
-            }
-          />
-        );
+        return <BridalPage onSelectDesign={handleSelectDesign} />;
 
       case "orders":
         return <StitchingOrdersPage />;
-
-      case "gallery": {
-        const p = currentPage as {
-          page: "gallery";
-          subcategory: Subcategory;
-          title?: string;
-        };
-        return (
-          <GalleryPage
-            subcategory={p.subcategory}
-            bridalFilter={null}
-            onSelectDesign={(design) =>
-              navigate({ page: "design-detail", design })
-            }
-          />
-        );
-      }
-
-      case "bridal-gallery": {
-        const p = currentPage as {
-          page: "bridal-gallery";
-          bridalFilter: "embroidery" | "blouse";
-        };
-        return (
-          <GalleryPage
-            subcategory=""
-            bridalFilter={p.bridalFilter}
-            onSelectDesign={(design) =>
-              navigate({ page: "design-detail", design })
-            }
-          />
-        );
-      }
 
       case "design-detail": {
         const p = currentPage as { page: "design-detail"; design: Design };
@@ -186,7 +108,12 @@ export default function App() {
       }
 
       default:
-        return <HomePage onNavigate={handleTabChange} />;
+        return (
+          <HomePage
+            onNavigate={handleTabChange}
+            onSelectDesign={handleSelectDesign}
+          />
+        );
     }
   };
 

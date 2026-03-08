@@ -1,16 +1,12 @@
 import { useState } from "react";
 import { toast } from "sonner";
+import { useOrders, usePayments } from "../../hooks/useFirestore";
+import { addPayment, updateCustomer } from "../../lib/firestoreService";
 import {
   type Customer,
-  type Order,
-  type Payment,
   formatDate,
   generateId,
-  getOrders,
   getPaymentStatus,
-  getPayments,
-  savePayment,
-  updateCustomer,
 } from "../../lib/storage";
 
 interface CustomerProfileProps {
@@ -40,50 +36,65 @@ export function CustomerProfile({ customer, onUpdated }: CustomerProfileProps) {
   );
   const [payNotes, setPayNotes] = useState("");
 
-  const orders = getOrders().filter((o) => o.customerId === customer.id);
-  const payments = getPayments().filter((p) => p.customerId === customer.id);
+  const { data: allOrders } = useOrders();
+  const { data: allPayments } = usePayments();
+
+  const orders = allOrders.filter((o) => o.customerId === customer.id);
+  const payments = allPayments.filter((p) => p.customerId === customer.id);
 
   const totalPaid = payments.reduce((sum, p) => sum + p.amount, 0);
   const totalCharged = orders.reduce((sum, o) => sum + o.totalAmount, 0);
   const balance = totalCharged - totalPaid;
   const paymentStatus = getPaymentStatus(totalCharged, totalPaid);
 
-  const saveMeasurements = () => {
-    updateCustomer({ ...customer, measurements });
-    onUpdated();
-    toast.success("Measurements saved");
+  const saveMeasurements = async () => {
+    try {
+      await updateCustomer({ ...customer, measurements });
+      onUpdated();
+      toast.success("Measurements saved");
+    } catch {
+      toast.error("Failed to save measurements");
+    }
   };
 
-  const saveNotes = () => {
-    updateCustomer({ ...customer, notes });
-    onUpdated();
+  const saveNotes = async () => {
+    try {
+      await updateCustomer({ ...customer, notes });
+      onUpdated();
+    } catch {
+      toast.error("Failed to save notes");
+    }
   };
 
-  const addPayment = () => {
+  const handleAddPayment = async () => {
     const amount = Number.parseFloat(payAmount);
     if (!amount || amount <= 0) {
       toast.error("Enter valid amount");
       return;
     }
     // Find most recent order for reference
-    const latestOrder = orders.sort(
+    const latestOrder = [...orders].sort(
       (a, b) =>
         new Date(b.orderDate).getTime() - new Date(a.orderDate).getTime(),
     )[0];
-    savePayment({
-      id: generateId(),
-      orderId: latestOrder?.id || "",
-      customerId: customer.id,
-      amount,
-      type: payType,
-      date: new Date().toISOString(),
-      notes: payNotes.trim(),
-    });
-    toast.success("Payment recorded");
-    setShowPaymentForm(false);
-    setPayAmount("");
-    setPayNotes("");
-    onUpdated();
+    try {
+      await addPayment({
+        id: generateId(),
+        orderId: latestOrder?.id || "",
+        customerId: customer.id,
+        amount,
+        type: payType,
+        date: new Date().toISOString(),
+        notes: payNotes.trim(),
+      });
+      toast.success("Payment recorded");
+      setShowPaymentForm(false);
+      setPayAmount("");
+      setPayNotes("");
+      onUpdated();
+    } catch {
+      toast.error("Failed to record payment");
+    }
   };
 
   const measurementFields = [
@@ -164,7 +175,7 @@ export function CustomerProfile({ customer, onUpdated }: CustomerProfileProps) {
                 No orders yet
               </p>
             ) : (
-              orders
+              [...orders]
                 .sort(
                   (a, b) =>
                     new Date(b.orderDate).getTime() -
@@ -222,7 +233,7 @@ export function CustomerProfile({ customer, onUpdated }: CustomerProfileProps) {
                 No orders yet
               </p>
             ) : (
-              orders
+              [...orders]
                 .sort(
                   (a, b) =>
                     new Date(b.orderDate).getTime() -
@@ -350,7 +361,7 @@ export function CustomerProfile({ customer, onUpdated }: CustomerProfileProps) {
                   <button
                     type="button"
                     data-ocid="customer.payment_save.button"
-                    onClick={addPayment}
+                    onClick={handleAddPayment}
                     className="flex-1 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-bold"
                   >
                     Save
@@ -366,7 +377,7 @@ export function CustomerProfile({ customer, onUpdated }: CustomerProfileProps) {
                   PAYMENT HISTORY
                 </p>
                 <div className="space-y-2">
-                  {payments
+                  {[...payments]
                     .sort(
                       (a, b) =>
                         new Date(b.date).getTime() - new Date(a.date).getTime(),

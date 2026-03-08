@@ -3,10 +3,17 @@ import type { Design } from "../lib/storage";
 interface DesignCardProps {
   design: Design;
   onClick: () => void;
+  /** Use wide (16:9) aspect ratio with object-contain — for embroidery subcategory */
+  useWideRatio?: boolean;
 }
 
-export function DesignCard({ design, onClick }: DesignCardProps) {
+export function DesignCard({
+  design,
+  onClick,
+  useWideRatio = false,
+}: DesignCardProps) {
   const firstImage = design.images[0];
+  const aspectPadding = useWideRatio ? "56.25%" : "100%";
 
   return (
     <button
@@ -15,14 +22,14 @@ export function DesignCard({ design, onClick }: DesignCardProps) {
       onClick={onClick}
       className="group w-full text-left rounded-xl overflow-hidden bg-card shadow-card hover:shadow-card-hover transition-all active:scale-98 animate-fade-in"
     >
-      {/* Square thumbnail */}
-      <div className="relative w-full" style={{ paddingBottom: "100%" }}>
+      {/* Thumbnail */}
+      <div className="relative w-full" style={{ paddingBottom: aspectPadding }}>
         <div className="absolute inset-0">
           {firstImage ? (
             <img
               src={firstImage}
               alt={design.title}
-              className="w-full h-full object-cover"
+              className={`w-full h-full ${useWideRatio ? "object-contain bg-muted" : "object-cover"}`}
               loading="lazy"
             />
           ) : (
@@ -42,10 +49,10 @@ export function DesignCard({ design, onClick }: DesignCardProps) {
               1/{design.images.length}
             </div>
           )}
-          {/* Bridal tag */}
+          {/* 👑 Bridal crown icon */}
           {design.isBridal && (
-            <div className="absolute top-1.5 left-1.5 bg-primary/90 text-primary-foreground text-[9px] font-bold px-1.5 py-0.5 rounded-full">
-              Bridal
+            <div className="absolute top-1.5 left-1.5 w-6 h-6 flex items-center justify-center bg-yellow-400/90 rounded-full shadow-sm">
+              <span className="text-[11px] leading-none">👑</span>
             </div>
           )}
         </div>

@@ -1,25 +1,20 @@
-import { Check, Eye, EyeOff, Pencil, Search, Trash2, X } from "lucide-react";
-import { useCallback, useState } from "react";
+import { Eye, EyeOff, Pencil, Search, Trash2, X } from "lucide-react";
+import { useState } from "react";
 import { toast } from "sonner";
+import { useDesigns } from "../../hooks/useFirestore";
 import { SUBCATEGORY_LABELS } from "../../lib/designCodes";
+import { deleteDesign, updateDesign } from "../../lib/firestoreService";
 import { fileToBase64 } from "../../lib/imageUtils";
-import {
-  type Design,
-  deleteDesign,
-  getDesigns,
-  updateDesign,
-} from "../../lib/storage";
+import type { Design } from "../../lib/storage";
 
 export function AdminDesigns() {
-  const [designs, setDesigns] = useState(() => getDesigns());
+  const { data: designs, loading } = useDesigns();
   const [searchQuery, setSearchQuery] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [editImages, setEditImages] = useState<string[]>([]);
   const [editBridal, setEditBridal] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
-
-  const refresh = useCallback(() => setDesigns(getDesigns()), []);
 
   const filtered = searchQuery.trim()
     ? designs.filter(
@@ -36,35 +31,44 @@ export function AdminDesigns() {
     setEditBridal(design.isBridal);
   };
 
-  const handleEditSave = () => {
+  const handleEditSave = async () => {
     if (!editTitle.trim()) {
       toast.error("Title is required");
       return;
     }
     const design = designs.find((d) => d.id === editingId);
     if (!design) return;
-    updateDesign({
-      ...design,
-      title: editTitle.trim(),
-      images: editImages,
-      isBridal: editBridal,
-    });
-    refresh();
-    setEditingId(null);
-    toast.success("Design updated");
+    try {
+      await updateDesign({
+        ...design,
+        title: editTitle.trim(),
+        images: editImages,
+        isBridal: editBridal,
+      });
+      setEditingId(null);
+      toast.success("Design updated");
+    } catch {
+      toast.error("Failed to update design");
+    }
   };
 
-  const handleToggleHide = (design: Design) => {
-    updateDesign({ ...design, isHidden: !design.isHidden });
-    refresh();
-    toast.success(design.isHidden ? "Design visible" : "Design hidden");
+  const handleToggleHide = async (design: Design) => {
+    try {
+      await updateDesign({ ...design, isHidden: !design.isHidden });
+      toast.success(design.isHidden ? "Design visible" : "Design hidden");
+    } catch {
+      toast.error("Failed to update design");
+    }
   };
 
-  const handleDelete = (id: string) => {
-    deleteDesign(id);
-    refresh();
-    setDeleteConfirmId(null);
-    toast.success("Design deleted");
+  const handleDelete = async (id: string) => {
+    try {
+      await deleteDesign(id);
+      setDeleteConfirmId(null);
+      toast.success("Design deleted");
+    } catch {
+      toast.error("Failed to delete design");
+    }
   };
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -79,6 +83,23 @@ export function AdminDesigns() {
     setEditImages((prev) => [...prev, ...newImgs]);
     e.target.value = "";
   };
+
+  if (loading) {
+    return (
+      <div
+        data-ocid="admin.designs.loading_state"
+        className="p-4 grid grid-cols-2 gap-3"
+      >
+        {[1, 2, 3, 4].map((i) => (
+          <div
+            key={i}
+            className="rounded-xl bg-muted animate-pulse"
+            style={{ paddingBottom: "100%" }}
+          />
+        ))}
+      </div>
+    );
+  }
 
   return (
     <div className="p-4">
@@ -136,6 +157,11 @@ export function AdminDesigns() {
                   {design.isHidden && (
                     <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
                       <EyeOff size={24} className="text-white" />
+                    </div>
+                  )}
+                  {design.isBridal && (
+                    <div className="absolute top-1.5 left-1.5 w-5 h-5 bg-yellow-400/90 rounded-full flex items-center justify-center">
+                      <span className="text-[10px]">👑</span>
                     </div>
                   )}
                 </div>
@@ -254,7 +280,7 @@ export function AdminDesigns() {
             </div>
             <div className="flex items-center justify-between">
               <p className="text-sm font-semibold text-foreground">
-                Bridal Tag
+                Bridal Tag 👑
               </p>
               <button
                 type="button"
