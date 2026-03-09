@@ -134,11 +134,11 @@ export function DesignDetailPage({
 
   return (
     <div className="min-h-full">
-      {/* Image Slider — 2.3:1 aspect ratio container (657/1536 = 42.77%) */}
-      {/* This ensures the full wide image always shows without cropping */}
+      {/* Image Slider — 1:1 square container */}
+      {/* Square ensures embroidery designs are always visible and centered */}
       <div
         className="w-full bg-black relative"
-        style={{ paddingBottom: "42.77%", position: "relative" }}
+        style={{ paddingBottom: "100%", position: "relative" }}
       >
         <div className="absolute inset-0">
           <ImageSlider
@@ -321,6 +321,14 @@ export function DesignDetailPage({
                 <span className="text-xs font-semibold text-foreground">
                   {currentDesign.images.filter(Boolean).length} photo
                   {currentDesign.images.filter(Boolean).length !== 1 ? "s" : ""}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-muted-foreground">Price</span>
+                <span className="text-xs font-bold text-foreground">
+                  {currentDesign.price != null
+                    ? `₹${currentDesign.price}`
+                    : "Ask in Shop"}
                 </span>
               </div>
             </div>

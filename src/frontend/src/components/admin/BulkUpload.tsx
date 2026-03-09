@@ -104,14 +104,19 @@ export function BulkUpload({ onSaved }: { onSaved: () => void }) {
     const prefix = PREFIXES[subcategory];
 
     try {
+      // Phase 1: Upload ALL images to Cloudinary first
+      const imageUrls: string[] = [];
       for (let i = 0; i < selectedFiles.length; i++) {
-        const file = selectedFiles[i];
+        const url = await uploadToCloudinary(selectedFiles[i]);
+        imageUrls.push(url);
+        setStatus({ phase: "uploading", done: i + 1, total });
+      }
+
+      // Phase 2: Save all design documents to Firestore
+      const saves = imageUrls.map((imageUrl, i) => {
         const localCount = existingCount + i + 1;
         const code = `${prefix}${String(localCount).padStart(3, "0")}`;
-
-        const imageUrl = await uploadToCloudinary(file);
-
-        await addDesign({
+        return addDesign({
           id: generateId(),
           designCode: code,
           title: code,
@@ -122,20 +127,17 @@ export function BulkUpload({ onSaved }: { onSaved: () => void }) {
           isHidden: false,
           createdAt: new Date().toISOString(),
           tags,
-          price: price ? Number.parseFloat(price) : undefined,
-          notes: notes.trim() || undefined,
+          price: price ? Number.parseFloat(price) : null,
+          notes: notes.trim() || "",
         });
-
-        setStatus({ phase: "uploading", done: i + 1, total });
-      }
+      });
+      await Promise.all(saves);
 
       setStatus({ phase: "success", count: total });
       onSaved();
       setSelectedFiles([]);
-    } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : "Upload failed. Check connection.",
-      );
+    } catch {
+      toast.error("Upload failed. Please try again.");
       setStatus({ phase: "idle" });
     }
   };

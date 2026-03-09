@@ -8,7 +8,7 @@ import {
   updateDesign,
   updateOrderDesignCode,
 } from "../../lib/firestoreService";
-import { fileToBase64 } from "../../lib/imageUtils";
+import { uploadToCloudinary } from "../../lib/imageUtils";
 import type { Category, Design, Subcategory } from "../../lib/storage";
 
 const CATEGORY_SUBCATEGORIES: Record<Category, Subcategory[]> = {
@@ -135,8 +135,8 @@ export function AdminDesigns() {
         images: editImages,
         isBridal: editBridal,
         tags: editTags,
-        price: editPrice ? Number.parseFloat(editPrice) : undefined,
-        notes: editNotes.trim() || undefined,
+        price: editPrice ? Number.parseFloat(editPrice) : null,
+        notes: editNotes.trim() || "",
       });
 
       setEditingId(null);
@@ -173,11 +173,17 @@ export function AdminDesigns() {
       toast.error("Maximum 5 images");
       return;
     }
-    const newImgs = await Promise.all(
-      files.slice(0, 5 - editImages.length).map(fileToBase64),
-    );
-    setEditImages((prev) => [...prev, ...newImgs]);
     e.target.value = "";
+    try {
+      toast.info("Uploading image...");
+      const newUrls = await Promise.all(
+        files.slice(0, 5 - editImages.length).map(uploadToCloudinary),
+      );
+      setEditImages((prev) => [...prev, ...newUrls]);
+      toast.success("Image uploaded");
+    } catch {
+      toast.error("Upload failed. Please try again.");
+    }
   };
 
   if (loading) {
@@ -275,7 +281,7 @@ export function AdminDesigns() {
                 </p>
                 {/* Price badge */}
                 <p className="text-[10px] text-primary font-semibold mt-0.5">
-                  {design.price ? `₹${design.price}` : "Ask in Shop"}
+                  {design.price != null ? `₹${design.price}` : "Ask in Shop"}
                 </p>
                 {/* Tags preview */}
                 {design.tags && design.tags.length > 0 && (

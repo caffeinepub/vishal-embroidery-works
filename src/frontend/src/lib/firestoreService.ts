@@ -9,13 +9,33 @@ import {
 import { db } from "./firebase";
 import type { Customer, Design, Order, Payment } from "./storage";
 
+/** Strip all undefined values so Firestore never receives them. */
+function sanitizeDesign(design: Design): Record<string, unknown> {
+  return {
+    id: design.id ?? "",
+    designCode: design.designCode ?? "",
+    title: design.title ?? "",
+    images: Array.isArray(design.images) ? design.images.filter(Boolean) : [],
+    category: design.category ?? "",
+    subcategory: design.subcategory ?? "",
+    isBridal: design.isBridal ?? false,
+    isHidden: design.isHidden ?? false,
+    createdAt: design.createdAt ?? new Date().toISOString(),
+    tags: Array.isArray(design.tags) ? design.tags : [],
+    price: design.price != null ? design.price : null,
+    notes: typeof design.notes === "string" ? design.notes : "",
+  };
+}
+
 // --- Designs ---
 export async function addDesign(design: Design): Promise<void> {
-  await setDoc(doc(db, "designs", design.id), design);
+  await setDoc(doc(db, "designs", design.id), sanitizeDesign(design));
 }
 
 export async function updateDesign(design: Design): Promise<void> {
-  await setDoc(doc(db, "designs", design.id), design, { merge: true });
+  await setDoc(doc(db, "designs", design.id), sanitizeDesign(design), {
+    merge: true,
+  });
 }
 
 export async function deleteDesign(id: string): Promise<void> {
@@ -54,10 +74,6 @@ export async function addPayment(payment: Payment): Promise<void> {
 }
 
 // --- Design code cascade ---
-/**
- * When a design code is renamed, update every Order that references the old code
- * so the order history stays consistent.
- */
 export async function updateOrderDesignCode(
   oldCode: string,
   newCode: string,

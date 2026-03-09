@@ -1,9 +1,11 @@
 import { Search } from "lucide-react";
 import { useState } from "react";
+import { toast } from "sonner";
 import { DesignCard } from "../components/DesignCard";
 import { useDesigns } from "../hooks/useFirestore";
 import { SUBCATEGORY_LABELS } from "../lib/designCodes";
 import type { Design } from "../lib/storage";
+import { useAppStore } from "../store/appStore";
 
 interface GalleryPageProps {
   subcategory: string;
@@ -18,6 +20,7 @@ export function GalleryPage({
 }: GalleryPageProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const { data: designs, loading } = useDesigns();
+  const { addToTrialRoom } = useAppStore();
 
   // Filter designs
   let filtered = designs.filter((d) => !d.isHidden);
@@ -43,6 +46,20 @@ export function GalleryPage({
     ? `Bridal ${bridalFilter === "embroidery" ? "Embroidery" : "Blouse"}`
     : SUBCATEGORY_LABELS[subcategory as keyof typeof SUBCATEGORY_LABELS] ||
       subcategory;
+
+  const handleAddToTrialRoom = (design: Design) => {
+    const result = addToTrialRoom({
+      id: design.id,
+      designCode: design.designCode,
+      imageURL: design.images[0] || "",
+      category: design.category,
+      addedAt: new Date().toISOString(),
+    });
+    if (result === "added") toast.success("Design added to Trial Room");
+    else if (result === "duplicate") toast.info("Already in Trial Room");
+    else if (result === "limit")
+      toast.error("Trial Room limit reached (max 10)");
+  };
 
   return (
     <div className="min-h-full">
@@ -76,7 +93,7 @@ export function GalleryPage({
         </div>
       </div>
 
-      {/* Grid — universal wide-contain (2.3:1) for ALL subcategories */}
+      {/* Grid */}
       {loading ? (
         <div className="px-4 grid grid-cols-2 gap-2 pb-4">
           {[1, 2, 3, 4].map((i) => (
@@ -110,6 +127,8 @@ export function GalleryPage({
               design={design}
               imageMode="wide-contain"
               onClick={() => onSelectDesign(design)}
+              onViewDesign={() => onSelectDesign(design)}
+              onAddToTrialRoom={() => handleAddToTrialRoom(design)}
             />
           ))}
         </div>

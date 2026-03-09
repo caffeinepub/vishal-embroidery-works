@@ -1,18 +1,20 @@
-import { ChevronLeft } from "lucide-react";
+import { ChevronLeft, FlaskConical } from "lucide-react";
 import { useAppStore } from "../store/appStore";
 
 interface TopBarProps {
   title?: string;
   showBack?: boolean;
   onBack?: () => void;
+  onNavigateTrialRoom?: () => void;
 }
 
 export function TopBar({
   title = "Vishal Embroidery Works",
   showBack = false,
   onBack,
+  onNavigateTrialRoom,
 }: TopBarProps) {
-  const { openAdmin } = useAppStore();
+  const { openAdmin, trialRoom } = useAppStore();
 
   return (
     <header
@@ -46,19 +48,39 @@ export function TopBar({
           </h1>
         </div>
       </div>
-      {!showBack && (
-        <button
-          type="button"
-          data-ocid="admin.open_modal_button"
-          onClick={openAdmin}
-          className="w-9 h-9 rounded-full vew-hero-gradient flex items-center justify-center flex-shrink-0 shadow-sm active:scale-95 transition-transform"
-          aria-label="Admin panel"
-        >
-          <span className="text-white text-[11px] font-bold leading-none">
-            VEW
-          </span>
-        </button>
-      )}
+
+      {/* Right side: Trial Room icon + Admin button */}
+      <div className="flex items-center gap-1.5 flex-shrink-0">
+        {!showBack && onNavigateTrialRoom && (
+          <button
+            type="button"
+            data-ocid="trial_room.open_modal_button"
+            onClick={onNavigateTrialRoom}
+            className="relative w-9 h-9 rounded-full bg-muted flex items-center justify-center active:scale-95 transition-transform"
+            aria-label="Trial Room"
+          >
+            <FlaskConical size={18} className="text-foreground" />
+            {trialRoom.length > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-primary text-white text-[9px] font-bold rounded-full flex items-center justify-center">
+                {trialRoom.length}
+              </span>
+            )}
+          </button>
+        )}
+        {!showBack && (
+          <button
+            type="button"
+            data-ocid="admin.open_modal_button"
+            onClick={openAdmin}
+            className="w-9 h-9 rounded-full vew-hero-gradient flex items-center justify-center shadow-sm active:scale-95 transition-transform"
+            aria-label="Admin panel"
+          >
+            <span className="text-white text-[11px] font-bold leading-none">
+              VEW
+            </span>
+          </button>
+        )}
+      </div>
     </header>
   );
 }

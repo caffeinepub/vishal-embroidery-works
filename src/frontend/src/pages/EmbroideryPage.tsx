@@ -1,7 +1,9 @@
 import { useState } from "react";
+import { toast } from "sonner";
 import { DesignCard } from "../components/DesignCard";
 import { useDesigns } from "../hooks/useFirestore";
 import type { Design, Subcategory } from "../lib/storage";
+import { useAppStore } from "../store/appStore";
 
 interface EmbroideryPageProps {
   onSelectDesign: (design: Design, designs: Design[], index: number) => void;
@@ -31,6 +33,7 @@ export function EmbroideryPage({ onSelectDesign }: EmbroideryPageProps) {
   const [activeSubcategory, setActiveSubcategory] =
     useState<Subcategory | null>(null);
   const { data: allDesigns, loading } = useDesigns();
+  const { addToTrialRoom } = useAppStore();
 
   const handleCardTap = (subId: Subcategory) => {
     setActiveSubcategory((prev) => (prev === subId ? null : subId));
@@ -41,6 +44,20 @@ export function EmbroideryPage({ onSelectDesign }: EmbroideryPageProps) {
         (d) => d.subcategory === activeSubcategory && !d.isHidden,
       )
     : [];
+
+  const handleAddToTrialRoom = (design: Design) => {
+    const result = addToTrialRoom({
+      id: design.id,
+      designCode: design.designCode,
+      imageURL: design.images[0] || "",
+      category: design.category,
+      addedAt: new Date().toISOString(),
+    });
+    if (result === "added") toast.success("Design added to Trial Room");
+    else if (result === "duplicate") toast.info("Already in Trial Room");
+    else if (result === "limit")
+      toast.error("Trial Room limit reached (max 10)");
+  };
 
   return (
     <div className="min-h-full">
@@ -144,6 +161,10 @@ export function EmbroideryPage({ onSelectDesign }: EmbroideryPageProps) {
                   design={design}
                   imageMode="wide-contain"
                   onClick={() => onSelectDesign(design, galleryDesigns, idx)}
+                  onViewDesign={() =>
+                    onSelectDesign(design, galleryDesigns, idx)
+                  }
+                  onAddToTrialRoom={() => handleAddToTrialRoom(design)}
                 />
               ))}
             </div>

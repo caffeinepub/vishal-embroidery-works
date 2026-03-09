@@ -6,13 +6,16 @@ import { SplashScreen } from "./components/SplashScreen";
 import { TopBar } from "./components/TopBar";
 import { AdminPanel } from "./components/admin/AdminPanel";
 import { Toaster } from "./components/ui/sonner";
-import type { Design } from "./lib/storage";
+import { useDesigns } from "./hooks/useFirestore";
+import type { Design, TrialRoomItem } from "./lib/storage";
 import { BlousePage } from "./pages/BlousePage";
 import { BridalPage } from "./pages/BridalPage";
 import { DesignDetailPage } from "./pages/DesignDetailPage";
 import { EmbroideryPage } from "./pages/EmbroideryPage";
 import { HomePage } from "./pages/HomePage";
 import { StitchingOrdersPage } from "./pages/StitchingOrdersPage";
+import { TrialRoomPage } from "./pages/TrialRoomPage";
+import { VirtualTrialRoomPage } from "./pages/VirtualTrialRoomPage";
 import { type ActiveTab, useAppStore } from "./store/appStore";
 
 // Page stack navigation
@@ -22,6 +25,8 @@ type PageEntry =
   | { page: "blouse" }
   | { page: "bridal" }
   | { page: "orders" }
+  | { page: "trial-room" }
+  | { page: "virtual-trial-room" }
   | {
       page: "design-detail";
       design: Design;
@@ -34,6 +39,7 @@ export default function App() {
     useAppStore();
   const [pageStack, setPageStack] = useState<PageEntry[]>([{ page: "home" }]);
   const [showSplash, setShowSplash] = useState(true);
+  const { data: allDesigns } = useDesigns();
 
   const currentPage = pageStack[pageStack.length - 1];
 
@@ -63,6 +69,29 @@ export default function App() {
     [navigate],
   );
 
+  const handleNavigateTrialRoom = useCallback(() => {
+    navigate({ page: "trial-room" });
+  }, [navigate]);
+
+  const handleOpenVirtualTrial = useCallback(() => {
+    navigate({ page: "virtual-trial-room" });
+  }, [navigate]);
+
+  const handlePreviewTrialItem = useCallback(
+    (item: TrialRoomItem) => {
+      const design = allDesigns.find((d) => d.id === item.id);
+      if (design) {
+        navigate({
+          page: "design-detail",
+          design,
+          designs: allDesigns,
+          initialIndex: allDesigns.indexOf(design),
+        });
+      }
+    },
+    [allDesigns, navigate],
+  );
+
   // Page title for TopBar
   const getPageTitle = (): string => {
     switch (currentPage.page) {
@@ -76,6 +105,10 @@ export default function App() {
         return "Bridal Collection";
       case "orders":
         return "Stitching Orders";
+      case "trial-room":
+        return "Trial Room";
+      case "virtual-trial-room":
+        return "Virtual Trial Room";
       case "design-detail":
         return (
           currentPage as {
@@ -100,6 +133,7 @@ export default function App() {
           <HomePage
             onNavigate={handleTabChange}
             onSelectDesign={handleSelectDesign}
+            onOpenVirtualTrial={handleOpenVirtualTrial}
           />
         );
 
@@ -114,6 +148,12 @@ export default function App() {
 
       case "orders":
         return <StitchingOrdersPage />;
+
+      case "trial-room":
+        return <TrialRoomPage onPreviewDesign={handlePreviewTrialItem} />;
+
+      case "virtual-trial-room":
+        return <VirtualTrialRoomPage onBack={goBack} />;
 
       case "design-detail": {
         const p = currentPage as {
@@ -136,6 +176,7 @@ export default function App() {
           <HomePage
             onNavigate={handleTabChange}
             onSelectDesign={handleSelectDesign}
+            onOpenVirtualTrial={handleOpenVirtualTrial}
           />
         );
     }
@@ -147,7 +188,12 @@ export default function App() {
       {showSplash && <SplashScreen onDone={() => setShowSplash(false)} />}
 
       {/* Top Bar */}
-      <TopBar title={getPageTitle()} showBack={showBack} onBack={goBack} />
+      <TopBar
+        title={getPageTitle()}
+        showBack={showBack}
+        onBack={goBack}
+        onNavigateTrialRoom={handleNavigateTrialRoom}
+      />
 
       {/* Main Content */}
       <main

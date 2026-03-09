@@ -1,10 +1,6 @@
 const CLOUDINARY_CLOUD_NAME = "doxbxqcef";
 const CLOUDINARY_UPLOAD_PRESET = "Embroidery_works";
 
-/**
- * Upload a single File to Cloudinary unsigned upload endpoint.
- * Returns the secure HTTPS URL of the uploaded image.
- */
 export async function uploadToCloudinary(file: File): Promise<string> {
   const formData = new FormData();
   formData.append("file", file);
@@ -12,10 +8,7 @@ export async function uploadToCloudinary(file: File): Promise<string> {
 
   const response = await fetch(
     `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`,
-    {
-      method: "POST",
-      body: formData,
-    },
+    { method: "POST", body: formData },
   );
 
   if (!response.ok) {
@@ -28,9 +21,15 @@ export async function uploadToCloudinary(file: File): Promise<string> {
 }
 
 /**
- * Legacy base64 helper — kept for reading existing base64 images stored
- * before the Cloudinary migration. NOT used for new uploads.
+ * Convert a Cloudinary URL to an optimized version with auto format/quality.
+ * Falls back to original URL if not a Cloudinary URL.
  */
+export function getOptimizedImageUrl(url: string, width = 800): string {
+  if (!url || !url.includes("cloudinary.com")) return url;
+  // Insert transformation segment after /upload/
+  return url.replace("/upload/", `/upload/f_auto,q_auto,w_${width}/`);
+}
+
 export function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();

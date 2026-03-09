@@ -27,7 +27,7 @@ export interface Design {
   isHidden: boolean;
   createdAt: string;
   tags: string[]; // array of tag strings
-  price?: number; // optional price in ₹
+  price?: number | null; // optional price in ₹
   notes?: string; // optional admin notes
 }
 
@@ -90,6 +90,21 @@ export interface CartItem {
   designCode: string;
   designTitle: string;
   designImage: string;
+  // Virtual Trial Room configuration
+  view?: "front" | "back";
+  neckType?: string;
+  blouseColor?: string;
+  embColor1?: string;
+  embColor2?: string;
+  uploadedBlousePhoto?: string; // base64 data URL
+}
+
+export interface TrialRoomItem {
+  id: string; // same as design.id
+  designCode: string;
+  imageURL: string;
+  category: string;
+  addedAt: string; // ISO timestamp
 }
 
 // ─── Cart (session-only, kept in localStorage intentionally) ─────────────────
@@ -121,6 +136,18 @@ export function saveCart(cart: CartItem[]): void {
 
 export function clearCart(): void {
   safeSet(CART_KEY, []);
+}
+
+// ─── Trial Room (session storage) ───────────────────────────────────────────
+const TRIAL_ROOM_KEY = "VEW_TRIAL_ROOM";
+export const TRIAL_ROOM_LIMIT = 10;
+
+export function getTrialRoom(): TrialRoomItem[] {
+  return safeGet<TrialRoomItem>(TRIAL_ROOM_KEY);
+}
+
+export function saveTrialRoom(items: TrialRoomItem[]): void {
+  safeSet(TRIAL_ROOM_KEY, items);
 }
 
 // ─── Utilities ───────────────────────────────────────────────────────────────

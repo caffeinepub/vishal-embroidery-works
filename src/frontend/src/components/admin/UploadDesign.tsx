@@ -101,6 +101,14 @@ export function UploadDesign({ onSaved }: { onSaved: () => void }) {
   };
 
   const handleSave = async () => {
+    if (!category) {
+      toast.error("Category is required");
+      return;
+    }
+    if (!subcategory) {
+      toast.error("Subcategory is required");
+      return;
+    }
     if (!title.trim()) {
       toast.error("Design title is required");
       return;
@@ -134,8 +142,8 @@ export function UploadDesign({ onSaved }: { onSaved: () => void }) {
         isHidden: false,
         createdAt: new Date().toISOString(),
         tags,
-        price: price ? Number.parseFloat(price) : undefined,
-        notes: notes.trim() || undefined,
+        price: price ? Number.parseFloat(price) : null,
+        notes: notes.trim() || "",
       });
 
       setStatus({ phase: "success" });
@@ -152,10 +160,8 @@ export function UploadDesign({ onSaved }: { onSaved: () => void }) {
         setNotes("");
         setStatus({ phase: "idle" });
       }, 2000);
-    } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : "Upload failed. Check connection.",
-      );
+    } catch {
+      toast.error("Upload failed. Please try again.");
       setStatus({ phase: "idle" });
     }
   };

@@ -1,4 +1,5 @@
 import { SUBCATEGORY_LABELS } from "../lib/designCodes";
+import { getOptimizedImageUrl } from "../lib/imageUtils";
 import type { Design } from "../lib/storage";
 
 interface DesignCardProps {
@@ -13,6 +14,8 @@ interface DesignCardProps {
   imageMode?: "wide-contain" | "embroidery-contain" | "wide" | false;
   /** @deprecated use imageMode="wide" */
   useWideRatio?: boolean;
+  onViewDesign?: () => void;
+  onAddToTrialRoom?: () => void;
 }
 
 export function DesignCard({
@@ -20,6 +23,8 @@ export function DesignCard({
   onClick,
   imageMode,
   useWideRatio = false,
+  onViewDesign,
+  onAddToTrialRoom,
 }: DesignCardProps) {
   const firstImage = design.images[0];
 
@@ -34,10 +39,40 @@ export function DesignCard({
     SUBCATEGORY_LABELS[design.subcategory as keyof typeof SUBCATEGORY_LABELS] ??
     design.subcategory;
 
+  // Action buttons row (shared across all variants)
+  const actionButtons =
+    onViewDesign || onAddToTrialRoom ? (
+      <div className="px-2 pb-2 flex gap-1.5">
+        {onViewDesign && (
+          <button
+            type="button"
+            data-ocid="design.view_design.button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onViewDesign();
+            }}
+            className="flex-1 text-[10px] font-semibold py-1 px-2 rounded-lg border border-primary text-primary bg-transparent hover:bg-primary/10 transition-colors"
+          >
+            View Design
+          </button>
+        )}
+        {onAddToTrialRoom && (
+          <button
+            type="button"
+            data-ocid="design.add_trial_room.button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onAddToTrialRoom();
+            }}
+            className="flex-1 text-[10px] font-semibold py-1 px-2 rounded-lg bg-muted text-muted-foreground hover:bg-muted/80 transition-colors"
+          >
+            + Trial Room
+          </button>
+        )}
+      </div>
+    ) : null;
+
   if (isWideContain) {
-    // --- Wide-contain layout (2.3:1 fixed aspect ratio, 1536×657 px) ---
-    // Fixed aspect ratio container ensures all cards have same height.
-    // Image is contained within (no cropping), black background fills letterbox.
     return (
       <button
         type="button"
@@ -50,7 +85,7 @@ export function DesignCard({
           <div className="absolute inset-0 bg-black flex items-center justify-center">
             {firstImage ? (
               <img
-                src={firstImage}
+                src={getOptimizedImageUrl(firstImage, 800)}
                 alt={design.title}
                 className="w-full h-full object-contain"
                 style={{ objectPosition: "center" }}
@@ -88,14 +123,13 @@ export function DesignCard({
             {subcategoryLabel}
           </p>
         </div>
+
+        {actionButtons}
       </button>
     );
   }
 
   if (isEmbroideryContain) {
-    // --- Embroidery-contain layout ---
-    // Top: full image, contain, black bg, auto-height
-    // Bottom: design code + title + category
     return (
       <button
         type="button"
@@ -107,7 +141,7 @@ export function DesignCard({
         <div className="w-full flex items-center justify-center bg-black">
           {firstImage ? (
             <img
-              src={firstImage}
+              src={getOptimizedImageUrl(firstImage, 800)}
               alt={design.title}
               className="w-full h-auto object-contain"
               style={{ display: "block", objectPosition: "center" }}
@@ -132,6 +166,8 @@ export function DesignCard({
             {subcategoryLabel}
           </p>
         </div>
+
+        {actionButtons}
 
         {/* Multi-image indicator */}
         {design.images.length > 1 && (
@@ -164,7 +200,7 @@ export function DesignCard({
         <div className="absolute inset-0">
           {firstImage ? (
             <img
-              src={firstImage}
+              src={getOptimizedImageUrl(firstImage, 800)}
               alt={design.title}
               className="w-full h-full object-contain"
               style={{ background: "#000" }}
@@ -201,6 +237,8 @@ export function DesignCard({
           {design.title}
         </p>
       </div>
+
+      {actionButtons}
     </button>
   );
 }

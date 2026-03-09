@@ -1,38 +1,44 @@
-# Vishal Embroidery Works
+# Vishal Embroidery Works — Virtual Trial Room
 
 ## Current State
-- Upload design form has: Category, Subcategory, Title, Images, Bridal toggle
-- Missing: Price, Tags, Notes fields
-- Bulk upload has: Category, Subcategory, Bridal toggle — missing Tags, Price, Notes
-- ManualOrderModal has no image upload capability
-- Design type in storage.ts has no `tags`, `price`, or `notes` fields
-- Search only filters by title and designCode, not tags
+The app has an existing `TrialRoomPage` (a simple saved-designs list, max 10 designs). The `HomePage` has a hero banner, search bar, and quick access cards. Navigation is via bottom nav and a page stack in `App.tsx`. Cart items are `CartItem` objects in localStorage.
 
 ## Requested Changes (Diff)
 
 ### Add
-- `tags: string[]`, `price?: number`, `notes?: string` fields to Design type
-- `referenceImage?: string` field to OrderDesign type
-- Tags input UI in UploadDesign: chip-based system with preset suggestions (zari, heavy, simple, bridal, daily wear, party wear) + custom entry
-- Price field (optional) in UploadDesign — if blank shows "Ask in Shop" in gallery
-- Notes textarea in UploadDesign
-- Tags, Price, Notes to BulkUpload form (applied to all uploaded designs in batch)
-- Optional reference image upload to ManualOrderModal (upload to Cloudinary, store URL)
-- Tags and price display in AdminDesigns edit modal
-- Tags filtering in search (AdminDesigns + global search)
+- **`VirtualTrialRoomPage.tsx`** — A full virtual try-on screen featuring:
+  - Search bar (placeholder "Search Embroidery Design") with live Firestore search by code/name/tags
+  - Front / Back view toggle
+  - SVG-based female mannequin upper torso (shoulders + neck + blouse, no full body) rendered with dynamic neck cutout shapes
+  - Neck type selector (Front: U Neck, Boat Neck, V Neck, Round Neck, Square Neck; Back: Deep U, Keyhole, Dori Style, V Back, Round Back)
+  - Blouse color picker (HEX/swatch)
+  - Embroidery Color 1 & Color 2 pickers (stored as metadata for the order)
+  - Selected embroidery design overlay on the neckline area of the SVG mannequin
+  - "Upload My Blouse Photo" button — reads dominant color via Canvas API and applies to mannequin blouse; user can still override manually
+  - Cancel button → goes back
+  - Add to Stitching button → adds a CartItem (with designCode, view, neck type, blouse color, embroidery colors) to the stitching cart and shows toast
+- **`storage.ts`** — Add `VirtualTrialConfig` interface; extend `CartItem` with optional trial config fields: `view`, `neckType`, `blouseColor`, `embColor1`, `embColor2`, `uploadedBlousePhoto`
+- **`HomePage.tsx`** — Add a large "Open Trial Room" button below quick access cards
+- **`App.tsx`** — Add `virtual-trial-room` page entry to page stack and render `VirtualTrialRoomPage`
 
 ### Modify
-- UploadDesign: reorder fields to match spec (Category, Subcategory, Title, Images, Price, Tags, Bridal, Notes)
-- BulkUpload: add same fields so bulk follows same rules as normal upload
-- AdminDesigns edit modal: expose tags and price for editing
-- firestoreService: no changes needed (merge: true handles new fields)
+- `storage.ts` — Extend `CartItem` interface with optional trial config fields
+- `HomePage.tsx` — Insert "Open Trial Room" CTA
+- `App.tsx` — Add virtual trial room navigation and page rendering
 
 ### Remove
-- Nothing removed
+- Nothing removed from existing features
 
 ## Implementation Plan
-1. Update `storage.ts` — add `tags`, `price`, `notes` to Design; add `referenceImage` to OrderDesign
-2. Update `UploadDesign.tsx` — add Price, Tags (chip UI), Notes; reorder fields
-3. Update `BulkUpload.tsx` — add Price, Tags, Notes fields; pass to saved designs
-4. Update `ManualOrderModal.tsx` — add optional image upload to Cloudinary
-5. Update `AdminDesigns.tsx` — add tags and price to edit modal; include tags in search
+1. Extend `CartItem` in `storage.ts` with optional trial config fields
+2. Build `VirtualTrialRoomPage.tsx`:
+   a. SVG mannequin with dynamic blouse color and neck-shape clip paths (5 front + 5 back variants)
+   b. Embroidery design image overlay positioned at neckline, clipped to neck shape
+   c. Search + filter by front/back view
+   d. Neck type pills selector
+   e. Color pickers for blouse, emb1, emb2
+   f. Upload photo button with Canvas dominant-color detection
+   g. Real-time state updates (all changes instant, no reload)
+   h. Cancel (goBack) and Add to Stitching (addToCart + toast + goBack)
+3. Add "Open Trial Room" button to `HomePage.tsx`
+4. Wire navigation in `App.tsx`

@@ -1,4 +1,4 @@
-import { Search } from "lucide-react";
+import { Search, Shirt } from "lucide-react";
 import { useRef, useState } from "react";
 import { useDesigns } from "../hooks/useFirestore";
 import type { Design } from "../lib/storage";
@@ -7,6 +7,7 @@ import type { ActiveTab } from "../store/appStore";
 interface HomePageProps {
   onNavigate: (tab: ActiveTab) => void;
   onSelectDesign: (design: Design, designs: Design[], index: number) => void;
+  onOpenVirtualTrial: () => void;
 }
 
 const quickAccessCards = [
@@ -33,7 +34,11 @@ const quickAccessCards = [
   },
 ];
 
-export function HomePage({ onNavigate, onSelectDesign }: HomePageProps) {
+export function HomePage({
+  onNavigate,
+  onSelectDesign,
+  onOpenVirtualTrial,
+}: HomePageProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
@@ -192,6 +197,19 @@ export function HomePage({ onNavigate, onSelectDesign }: HomePageProps) {
             </button>
           ))}
         </div>
+      </div>
+
+      {/* Open Trial Room CTA */}
+      <div className="px-4 pb-4">
+        <button
+          type="button"
+          data-ocid="home.open_virtual_trial.button"
+          onClick={onOpenVirtualTrial}
+          className="w-full py-4 rounded-2xl bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold text-base shadow-lg active:scale-[0.98] transition-transform flex items-center justify-center gap-2"
+        >
+          <Shirt size={20} />
+          Open Trial Room
+        </button>
       </div>
 
       {/* Latest Embroidery Designs */}
