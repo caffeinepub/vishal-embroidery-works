@@ -1,13 +1,4 @@
-// Storage keys
-export const KEYS = {
-  DESIGNS: "VEW_DESIGNS",
-  CUSTOMERS: "VEW_CUSTOMERS",
-  ORDERS: "VEW_ORDERS",
-  PAYMENTS: "VEW_PAYMENTS",
-  CART: "VEW_STITCHING_CART",
-};
-
-// Types
+// Types shared across the app
 export type Subcategory =
   | "embroidery"
   | "ready-blouse-embroidery"
@@ -29,12 +20,15 @@ export interface Design {
   id: string;
   designCode: string;
   title: string;
-  images: string[]; // base64, max 5
+  images: string[]; // Cloudinary URLs (max 5)
   category: Category;
   subcategory: Subcategory;
   isBridal: boolean;
   isHidden: boolean;
   createdAt: string;
+  tags: string[]; // array of tag strings
+  price?: number; // optional price in ₹
+  notes?: string; // optional admin notes
 }
 
 export interface Measurements {
@@ -64,6 +58,7 @@ export interface OrderDesign {
   designImage: string;
   isManual: boolean;
   manualDescription?: string;
+  referenceImage?: string; // optional Cloudinary URL for manual order reference
 }
 
 export interface Order {
@@ -97,7 +92,9 @@ export interface CartItem {
   designImage: string;
 }
 
-// Cart (stays in localStorage — per-session only)
+// ─── Cart (session-only, kept in localStorage intentionally) ─────────────────
+const CART_KEY = "VEW_STITCHING_CART";
+
 function safeGet<T>(key: string): T[] {
   try {
     return JSON.parse(localStorage.getItem(key) || "[]") as T[];
@@ -115,18 +112,18 @@ function safeSet<T>(key: string, data: T[]): void {
 }
 
 export function getCart(): CartItem[] {
-  return safeGet<CartItem>(KEYS.CART);
+  return safeGet<CartItem>(CART_KEY);
 }
 
 export function saveCart(cart: CartItem[]): void {
-  safeSet(KEYS.CART, cart);
+  safeSet(CART_KEY, cart);
 }
 
 export function clearCart(): void {
-  safeSet(KEYS.CART, []);
+  safeSet(CART_KEY, []);
 }
 
-// Utils
+// ─── Utilities ───────────────────────────────────────────────────────────────
 export function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }

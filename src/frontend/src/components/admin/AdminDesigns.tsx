@@ -16,6 +16,15 @@ const CATEGORY_SUBCATEGORIES: Record<Category, Subcategory[]> = {
   blouse: ["simple-blouse", "boat-neck", "bridal-blouse", "designer-blouse"],
 };
 
+const PRESET_TAGS = [
+  "zari",
+  "heavy",
+  "simple",
+  "bridal",
+  "daily wear",
+  "party wear",
+];
+
 export function AdminDesigns() {
   const { data: designs, loading } = useDesigns();
   const [searchQuery, setSearchQuery] = useState("");
@@ -27,6 +36,10 @@ export function AdminDesigns() {
     useState<Subcategory>("embroidery");
   const [editImages, setEditImages] = useState<string[]>([]);
   const [editBridal, setEditBridal] = useState(false);
+  const [editTags, setEditTags] = useState<string[]>([]);
+  const [editTagInput, setEditTagInput] = useState("");
+  const [editPrice, setEditPrice] = useState("");
+  const [editNotes, setEditNotes] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
@@ -34,7 +47,10 @@ export function AdminDesigns() {
     ? designs.filter(
         (d) =>
           d.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          d.designCode.toLowerCase().includes(searchQuery.toLowerCase()),
+          d.designCode.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          d.tags?.some((t) =>
+            t.toLowerCase().includes(searchQuery.toLowerCase()),
+          ),
       )
     : designs;
 
@@ -46,11 +62,35 @@ export function AdminDesigns() {
     setEditSubcategory(design.subcategory);
     setEditImages(design.images);
     setEditBridal(design.isBridal);
+    setEditTags(design.tags || []);
+    setEditPrice(design.price?.toString() || "");
+    setEditNotes(design.notes || "");
   };
 
   const handleCategoryChange = (cat: Category) => {
     setEditCategory(cat);
     setEditSubcategory(CATEGORY_SUBCATEGORIES[cat][0]);
+  };
+
+  const togglePresetTag = (tag: string) => {
+    setEditTags((prev) =>
+      prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag],
+    );
+  };
+
+  const handleTagInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter" || e.key === ",") {
+      e.preventDefault();
+      const val = editTagInput.trim().toLowerCase();
+      if (val && !editTags.includes(val)) {
+        setEditTags((prev) => [...prev, val]);
+      }
+      setEditTagInput("");
+    }
+  };
+
+  const removeEditTag = (tag: string) => {
+    setEditTags((prev) => prev.filter((t) => t !== tag));
   };
 
   const handleEditSave = async () => {
@@ -65,7 +105,6 @@ export function AdminDesigns() {
     const design = designs.find((d) => d.id === editingId);
     if (!design) return;
 
-    // Check for duplicate code (ignore self)
     const codeConflict = designs.find(
       (d) =>
         d.id !== design.id &&
@@ -83,7 +122,6 @@ export function AdminDesigns() {
       const oldCode = design.designCode;
       const newCode = editCode.trim().toUpperCase();
 
-      // Cascade code change to all orders that reference the old code
       if (oldCode !== newCode) {
         await updateOrderDesignCode(oldCode, newCode);
       }
@@ -96,6 +134,9 @@ export function AdminDesigns() {
         subcategory: editSubcategory,
         images: editImages,
         isBridal: editBridal,
+        tags: editTags,
+        price: editPrice ? Number.parseFloat(editPrice) : undefined,
+        notes: editNotes.trim() || undefined,
       });
 
       setEditingId(null);
@@ -166,7 +207,7 @@ export function AdminDesigns() {
         <input
           data-ocid="admin.designs.search_input"
           type="text"
-          placeholder="Search by title or code..."
+          placeholder="Search by title, code, or tag..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           className="w-full pl-8 pr-4 py-2.5 rounded-xl border border-border bg-card text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
@@ -232,6 +273,28 @@ export function AdminDesigns() {
                 <p className="text-[10px] text-muted-foreground">
                   {SUBCATEGORY_LABELS[design.subcategory]}
                 </p>
+                {/* Price badge */}
+                <p className="text-[10px] text-primary font-semibold mt-0.5">
+                  {design.price ? `₹${design.price}` : "Ask in Shop"}
+                </p>
+                {/* Tags preview */}
+                {design.tags && design.tags.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {design.tags.slice(0, 2).map((tag) => (
+                      <span
+                        key={tag}
+                        className="px-1.5 py-0.5 rounded-full bg-muted text-[9px] text-muted-foreground"
+                      >
+                        {tag}
+                      </span>
+                    ))}
+                    {design.tags.length > 2 && (
+                      <span className="text-[9px] text-muted-foreground">
+                        +{design.tags.length - 2}
+                      </span>
+                    )}
+                  </div>
+                )}
 
                 {/* Actions */}
                 <div className="flex gap-1 mt-2">
@@ -406,6 +469,79 @@ export function AdminDesigns() {
               </div>
             </div>
 
+            {/* Price */}
+            <div>
+              <p className="text-xs font-semibold text-muted-foreground block mb-1.5">
+                PRICE (OPTIONAL)
+              </p>
+              <input
+                data-ocid="admin.edit_design.price.input"
+                type="number"
+                placeholder="Enter price in ₹..."
+                value={editPrice}
+                onChange={(e) => setEditPrice(e.target.value)}
+                min="0"
+                className="w-full px-3 py-2.5 rounded-xl border border-border bg-card text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+              />
+              <p className="text-[11px] text-muted-foreground mt-1">
+                Leave blank to show &apos;Ask in Shop&apos;
+              </p>
+            </div>
+
+            {/* Tags */}
+            <div>
+              <p className="text-xs font-semibold text-muted-foreground block mb-1.5">
+                TAGS
+              </p>
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {PRESET_TAGS.map((tag) => (
+                  <button
+                    type="button"
+                    key={tag}
+                    data-ocid="admin.edit_design.tag_preset.toggle"
+                    onClick={() => togglePresetTag(tag)}
+                    className={`px-2.5 py-1 rounded-full text-xs font-semibold transition-colors ${
+                      editTags.includes(tag)
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-muted text-muted-foreground"
+                    }`}
+                  >
+                    {tag}
+                  </button>
+                ))}
+              </div>
+              <input
+                data-ocid="admin.edit_design.tag_input.input"
+                type="text"
+                placeholder="Add custom tag, press Enter..."
+                value={editTagInput}
+                onChange={(e) => setEditTagInput(e.target.value)}
+                onKeyDown={handleTagInputKeyDown}
+                className="w-full px-3 py-2 rounded-xl border border-border bg-card text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+              />
+              {editTags.filter((t) => !PRESET_TAGS.includes(t)).length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  {editTags
+                    .filter((t) => !PRESET_TAGS.includes(t))
+                    .map((tag) => (
+                      <span
+                        key={tag}
+                        className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-primary/10 text-primary text-xs font-semibold"
+                      >
+                        {tag}
+                        <button
+                          type="button"
+                          onClick={() => removeEditTag(tag)}
+                          className="ml-0.5 hover:text-destructive"
+                        >
+                          <X size={10} />
+                        </button>
+                      </span>
+                    ))}
+                </div>
+              )}
+            </div>
+
             {/* Bridal Toggle */}
             <div className="flex items-center justify-between">
               <p className="text-sm font-semibold text-foreground">
@@ -421,6 +557,21 @@ export function AdminDesigns() {
                   className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${editBridal ? "translate-x-5" : "translate-x-0.5"}`}
                 />
               </button>
+            </div>
+
+            {/* Notes */}
+            <div>
+              <p className="text-xs font-semibold text-muted-foreground block mb-1.5">
+                NOTES (OPTIONAL)
+              </p>
+              <textarea
+                data-ocid="admin.edit_design.notes.textarea"
+                placeholder="Admin notes..."
+                value={editNotes}
+                onChange={(e) => setEditNotes(e.target.value)}
+                rows={2}
+                className="w-full px-3 py-2.5 rounded-xl border border-border bg-card text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none"
+              />
             </div>
 
             <button

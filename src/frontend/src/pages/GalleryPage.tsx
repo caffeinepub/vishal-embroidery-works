@@ -44,8 +44,6 @@ export function GalleryPage({
     : SUBCATEGORY_LABELS[subcategory as keyof typeof SUBCATEGORY_LABELS] ||
       subcategory;
 
-  const isEmbroiderySubcategory = subcategory === "embroidery";
-
   return (
     <div className="min-h-full">
       {/* Sub-header */}
@@ -78,16 +76,14 @@ export function GalleryPage({
         </div>
       </div>
 
-      {/* Grid */}
+      {/* Grid — universal wide-contain (2.3:1) for ALL subcategories */}
       {loading ? (
         <div className="px-4 grid grid-cols-2 gap-2 pb-4">
           {[1, 2, 3, 4].map((i) => (
             <div
               key={i}
               className="rounded-xl bg-muted animate-pulse"
-              style={{
-                paddingBottom: isEmbroiderySubcategory ? "56.25%" : "100%",
-              }}
+              style={{ paddingBottom: "42.77%" }}
             />
           ))}
         </div>
@@ -112,7 +108,7 @@ export function GalleryPage({
             <DesignCard
               key={design.id}
               design={design}
-              imageMode={isEmbroiderySubcategory ? "embroidery-contain" : false}
+              imageMode="wide-contain"
               onClick={() => onSelectDesign(design)}
             />
           ))}

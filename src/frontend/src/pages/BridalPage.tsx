@@ -154,7 +154,7 @@ export function BridalPage({ onSelectDesign }: BridalPageProps) {
                 <div
                   key={i}
                   className="rounded-xl bg-muted animate-pulse"
-                  style={{ paddingBottom: "100%" }}
+                  style={{ paddingBottom: "42.77%" }}
                 />
               ))}
             </div>
@@ -174,7 +174,7 @@ export function BridalPage({ onSelectDesign }: BridalPageProps) {
                 <DesignCard
                   key={design.id}
                   design={design}
-                  useWideRatio={false}
+                  imageMode="wide-contain"
                   onClick={() => onSelectDesign(design, galleryDesigns, idx)}
                 />
               ))}

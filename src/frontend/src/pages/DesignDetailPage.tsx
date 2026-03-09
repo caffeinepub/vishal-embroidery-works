@@ -34,7 +34,8 @@ export function DesignDetailPage({
   const isInCart = cart.some((c) => c.designId === currentDesign.id);
   const isInCompare = compareDesigns.some((d) => d.id === currentDesign.id);
 
-  // Page-level swipe detection (on info/buttons section below image)
+  // Page-level swipe detection for design-to-design navigation
+  // Only triggered on the info section BELOW the image slider
   const pageSwipeTouchStartX = useRef(0);
   const pageSwipeTouchStartY = useRef(0);
 
@@ -53,7 +54,7 @@ export function DesignDetailPage({
       pageSwipeTouchStartY.current -
       (e.changedTouches[0]?.clientY ?? pageSwipeTouchStartY.current);
 
-    // Only process horizontal swipes that are clearly more horizontal than vertical
+    // Only process clearly horizontal swipes
     if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 60) {
       if (deltaX > 0) {
         // Swipe left → next design
@@ -133,13 +134,19 @@ export function DesignDetailPage({
 
   return (
     <div className="min-h-full">
-      {/* Image Slider */}
-      <div className="w-full bg-black relative" style={{ height: "340px" }}>
-        <ImageSlider
-          images={currentDesign.images}
-          alt={currentDesign.title}
-          className="w-full h-full"
-        />
+      {/* Image Slider — 2.3:1 aspect ratio container (657/1536 = 42.77%) */}
+      {/* This ensures the full wide image always shows without cropping */}
+      <div
+        className="w-full bg-black relative"
+        style={{ paddingBottom: "42.77%", position: "relative" }}
+      >
+        <div className="absolute inset-0">
+          <ImageSlider
+            images={currentDesign.images}
+            alt={currentDesign.title}
+            className="w-full h-full"
+          />
+        </div>
 
         {/* Design-to-design navigation arrows on image area */}
         {hasPrev && (
@@ -166,7 +173,7 @@ export function DesignDetailPage({
         )}
       </div>
 
-      {/* Info + Actions — swipe listener here to avoid conflict with ImageSlider */}
+      {/* Info + Actions — swipe listener here for design-to-design navigation */}
       <div onTouchStart={handlePageTouchStart} onTouchEnd={handlePageTouchEnd}>
         {/* Design counter + navigation hint */}
         {designs.length > 1 && (
@@ -178,7 +185,7 @@ export function DesignDetailPage({
               {hasPrev && (
                 <button
                   type="button"
-                  data-ocid="design.prev_design.button"
+                  data-ocid="design.prev_design_info.button"
                   onClick={goToPrev}
                   className="w-7 h-7 rounded-full bg-muted flex items-center justify-center text-muted-foreground hover:bg-primary/10 hover:text-primary transition-colors"
                   aria-label="Previous design"
@@ -192,7 +199,7 @@ export function DesignDetailPage({
               {hasNext && (
                 <button
                   type="button"
-                  data-ocid="design.next_design.button"
+                  data-ocid="design.next_design_info.button"
                   onClick={goToNext}
                   className="w-7 h-7 rounded-full bg-muted flex items-center justify-center text-muted-foreground hover:bg-primary/10 hover:text-primary transition-colors"
                   aria-label="Next design"
