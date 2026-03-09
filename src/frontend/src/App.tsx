@@ -2,6 +2,7 @@ import { useCallback, useState } from "react";
 import { AdminPINScreen } from "./components/AdminPINScreen";
 import { BottomNav } from "./components/BottomNav";
 import { CompareModal } from "./components/CompareModal";
+import { SplashScreen } from "./components/SplashScreen";
 import { TopBar } from "./components/TopBar";
 import { AdminPanel } from "./components/admin/AdminPanel";
 import { Toaster } from "./components/ui/sonner";
@@ -32,6 +33,7 @@ export default function App() {
   const { setActiveTab, isAdminOpen, isAdminAuthenticated, compareDesigns } =
     useAppStore();
   const [pageStack, setPageStack] = useState<PageEntry[]>([{ page: "home" }]);
+  const [showSplash, setShowSplash] = useState(true);
 
   const currentPage = pageStack[pageStack.length - 1];
 
@@ -141,6 +143,9 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-background">
+      {/* Splash Screen */}
+      {showSplash && <SplashScreen onDone={() => setShowSplash(false)} />}
+
       {/* Top Bar */}
       <TopBar title={getPageTitle()} showBack={showBack} onBack={goBack} />
 
