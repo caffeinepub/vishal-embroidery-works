@@ -4,13 +4,32 @@ import { toast } from "sonner";
 import { useDesigns } from "../../hooks/useFirestore";
 import { SUBCATEGORY_LABELS, generateDesignCode } from "../../lib/designCodes";
 import { addDesign } from "../../lib/firestoreService";
-import { filesToBase64Batch } from "../../lib/imageUtils";
+import { fileToBase64 } from "../../lib/imageUtils";
 import { type Category, type Subcategory, generateId } from "../../lib/storage";
 
 const CATEGORY_SUBCATEGORIES: Record<Category, Subcategory[]> = {
   embroidery: ["embroidery", "ready-blouse-embroidery"],
   blouse: ["simple-blouse", "boat-neck", "bridal-blouse", "designer-blouse"],
 };
+
+function getPrefix(sub: Subcategory): string {
+  switch (sub) {
+    case "embroidery":
+      return "EMB";
+    case "ready-blouse-embroidery":
+      return "RBE";
+    case "simple-blouse":
+      return "SIM";
+    case "boat-neck":
+      return "BN";
+    case "bridal-blouse":
+      return "BRD";
+    case "designer-blouse":
+      return "DSG";
+    default:
+      return "DSG";
+  }
+}
 
 export function BulkUpload({ onSaved }: { onSaved: () => void }) {
   const [category, setCategory] = useState<Category>("embroidery");
@@ -48,64 +67,53 @@ export function BulkUpload({ onSaved }: { onSaved: () => void }) {
       return;
     }
 
-    const BATCH = 10;
-    setProgress({ current: 0, total: selectedFiles.length });
+    const total = selectedFiles.length;
+    setProgress({ current: 0, total });
+    setDone(false);
 
-    // Keep a local counter for design codes (since Firestore updates are async)
     const existingCount = designs.filter(
       (d) => d.subcategory === subcategory,
     ).length;
 
+    const prefix = getPrefix(subcategory);
+
     try {
-      let savedCount = 0;
-      for (let i = 0; i < selectedFiles.length; i += BATCH) {
-        const batch = selectedFiles.slice(i, i + BATCH);
-        const batchImages = await filesToBase64Batch(batch, BATCH);
+      // Step 1: Convert ALL files to base64 in parallel
+      const allBase64 = await Promise.all(selectedFiles.map(fileToBase64));
 
-        const savePromises = batchImages.map((imgData, batchIdx) => {
-          const localCount = existingCount + savedCount + batchIdx + 1;
-          const prefix =
-            subcategory === "embroidery"
-              ? "EMB"
-              : subcategory === "ready-blouse-embroidery"
-                ? "RBE"
-                : subcategory === "simple-blouse"
-                  ? "SIM"
-                  : subcategory === "boat-neck"
-                    ? "BN"
-                    : subcategory === "bridal-blouse"
-                      ? "BRD"
-                      : "DSG";
-          const code = `${prefix}${String(localCount).padStart(3, "0")}`;
-          return addDesign({
-            id: generateId(),
-            designCode: code,
-            title: code,
-            images: [imgData],
-            category,
-            subcategory,
-            isBridal,
-            isHidden: false,
-            createdAt: new Date().toISOString(),
-          });
-        });
+      // Step 2: Build design objects
+      const designObjects = allBase64.map((imgData, idx) => {
+        const localCount = existingCount + idx + 1;
+        const code = `${prefix}${String(localCount).padStart(3, "0")}`;
+        return {
+          id: generateId(),
+          designCode: code,
+          title: code,
+          images: [imgData],
+          category,
+          subcategory,
+          isBridal,
+          isHidden: false,
+          createdAt: new Date().toISOString(),
+        };
+      });
 
-        await Promise.all(savePromises);
-        savedCount += batchImages.length;
+      // Step 3: Fire all Firestore saves in parallel; increment counter per completion
+      let completed = 0;
+      await Promise.all(
+        designObjects.map((design) =>
+          addDesign(design).then(() => {
+            completed += 1;
+            setProgress({ current: completed, total });
+          }),
+        ),
+      );
 
-        setProgress({
-          current: Math.min(i + BATCH, selectedFiles.length),
-          total: selectedFiles.length,
-        });
-        // Yield to UI thread
-        await new Promise((r) => setTimeout(r, 10));
-      }
-
-      toast.success(`${selectedFiles.length} designs added successfully!`);
-      onSaved();
-      setSelectedFiles([]);
       setProgress(null);
       setDone(true);
+      toast.success(`${total} designs added successfully!`);
+      onSaved();
+      setSelectedFiles([]);
     } catch {
       toast.error("Failed to process some images");
       setProgress(null);
@@ -211,29 +219,39 @@ export function BulkUpload({ onSaved }: { onSaved: () => void }) {
 
       {/* Progress */}
       {progress && (
-        <div data-ocid="bulk.progress.loading_state">
-          <div className="flex justify-between text-xs text-muted-foreground mb-1">
-            <span>Uploading to cloud...</span>
-            <span>
-              {progress.current}/{progress.total}
+        <div data-ocid="bulk.progress.loading_state" className="space-y-1.5">
+          <div className="flex justify-between text-xs font-semibold">
+            <span className="text-muted-foreground">Uploading to cloud...</span>
+            <span className="text-primary">
+              {progress.current} / {progress.total}
             </span>
           </div>
-          <div className="w-full bg-muted rounded-full h-2">
+          <div className="w-full bg-muted rounded-full h-2.5 overflow-hidden">
             <div
-              className="bg-primary h-2 rounded-full transition-all"
-              style={{ width: `${(progress.current / progress.total) * 100}%` }}
+              className="bg-primary h-2.5 rounded-full transition-all duration-200"
+              style={{
+                width: `${(progress.current / progress.total) * 100}%`,
+              }}
             />
           </div>
+          <p className="text-[11px] text-muted-foreground text-center">
+            {progress.current === progress.total
+              ? "Finalising..."
+              : `${progress.total - progress.current} remaining`}
+          </p>
         </div>
       )}
 
       {done && (
         <div
           data-ocid="bulk.success_state"
-          className="bg-green-50 border border-green-200 rounded-xl p-3 text-center"
+          className="bg-green-50 border border-green-200 rounded-xl p-4 text-center"
         >
-          <p className="text-sm font-semibold text-green-700">
-            All designs added successfully!
+          <p className="text-base font-bold text-green-700">
+            Upload Successful
+          </p>
+          <p className="text-xs text-green-600 mt-0.5">
+            All designs have been saved to the cloud.
           </p>
         </div>
       )}
@@ -246,7 +264,7 @@ export function BulkUpload({ onSaved }: { onSaved: () => void }) {
         className="w-full py-3.5 rounded-xl bg-primary text-primary-foreground font-bold text-sm active:scale-[0.98] disabled:opacity-60"
       >
         {progress
-          ? `Uploading ${progress.current}/${progress.total}...`
+          ? `Uploading ${progress.current} / ${progress.total}...`
           : `Upload All (${selectedFiles.length} images)`}
       </button>
     </div>

@@ -3,17 +3,31 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { useDesigns } from "../../hooks/useFirestore";
 import { SUBCATEGORY_LABELS } from "../../lib/designCodes";
-import { deleteDesign, updateDesign } from "../../lib/firestoreService";
+import {
+  deleteDesign,
+  updateDesign,
+  updateOrderDesignCode,
+} from "../../lib/firestoreService";
 import { fileToBase64 } from "../../lib/imageUtils";
-import type { Design } from "../../lib/storage";
+import type { Category, Design, Subcategory } from "../../lib/storage";
+
+const CATEGORY_SUBCATEGORIES: Record<Category, Subcategory[]> = {
+  embroidery: ["embroidery", "ready-blouse-embroidery"],
+  blouse: ["simple-blouse", "boat-neck", "bridal-blouse", "designer-blouse"],
+};
 
 export function AdminDesigns() {
   const { data: designs, loading } = useDesigns();
   const [searchQuery, setSearchQuery] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [editCode, setEditCode] = useState("");
   const [editTitle, setEditTitle] = useState("");
+  const [editCategory, setEditCategory] = useState<Category>("embroidery");
+  const [editSubcategory, setEditSubcategory] =
+    useState<Subcategory>("embroidery");
   const [editImages, setEditImages] = useState<string[]>([]);
   const [editBridal, setEditBridal] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
   const filtered = searchQuery.trim()
@@ -26,29 +40,70 @@ export function AdminDesigns() {
 
   const handleEdit = (design: Design) => {
     setEditingId(design.id);
+    setEditCode(design.designCode);
     setEditTitle(design.title);
+    setEditCategory(design.category);
+    setEditSubcategory(design.subcategory);
     setEditImages(design.images);
     setEditBridal(design.isBridal);
   };
 
+  const handleCategoryChange = (cat: Category) => {
+    setEditCategory(cat);
+    setEditSubcategory(CATEGORY_SUBCATEGORIES[cat][0]);
+  };
+
   const handleEditSave = async () => {
+    if (!editCode.trim()) {
+      toast.error("Design code is required");
+      return;
+    }
     if (!editTitle.trim()) {
       toast.error("Title is required");
       return;
     }
     const design = designs.find((d) => d.id === editingId);
     if (!design) return;
+
+    // Check for duplicate code (ignore self)
+    const codeConflict = designs.find(
+      (d) =>
+        d.id !== design.id &&
+        d.designCode.toLowerCase() === editCode.trim().toLowerCase(),
+    );
+    if (codeConflict) {
+      toast.error(
+        `Code "${editCode.trim()}" is already used by another design`,
+      );
+      return;
+    }
+
+    setIsSaving(true);
     try {
+      const oldCode = design.designCode;
+      const newCode = editCode.trim().toUpperCase();
+
+      // Cascade code change to all orders that reference the old code
+      if (oldCode !== newCode) {
+        await updateOrderDesignCode(oldCode, newCode);
+      }
+
       await updateDesign({
         ...design,
+        designCode: newCode,
         title: editTitle.trim(),
+        category: editCategory,
+        subcategory: editSubcategory,
         images: editImages,
         isBridal: editBridal,
       });
+
       setEditingId(null);
       toast.success("Design updated");
     } catch {
       toast.error("Failed to update design");
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -214,7 +269,7 @@ export function AdminDesigns() {
       {/* Edit Modal */}
       {editingId && (
         <div className="fixed inset-0 z-50 bg-black/60 flex flex-col justify-end">
-          <div className="bg-card rounded-t-2xl p-4 space-y-4 max-h-[80vh] overflow-auto animate-slide-up">
+          <div className="bg-card rounded-t-2xl p-4 space-y-4 max-h-[90vh] overflow-auto animate-slide-up">
             <div className="flex items-center justify-between">
               <h3 className="font-bold text-foreground">Edit Design</h3>
               <button
@@ -225,6 +280,31 @@ export function AdminDesigns() {
                 <X size={20} />
               </button>
             </div>
+
+            {/* Design Code */}
+            <div>
+              <label
+                htmlFor="edit-design-code"
+                className="text-xs font-semibold text-muted-foreground block mb-1"
+              >
+                DESIGN CODE
+              </label>
+              <input
+                id="edit-design-code"
+                data-ocid="admin.edit_design.code.input"
+                type="text"
+                value={editCode}
+                onChange={(e) => setEditCode(e.target.value.toUpperCase())}
+                placeholder="e.g. EMB021"
+                className="w-full px-3 py-2.5 rounded-xl border border-primary/40 bg-primary/5 text-sm font-bold text-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+              />
+              <p className="text-[11px] text-muted-foreground mt-1">
+                Changing the code will update all linked order records
+                automatically.
+              </p>
+            </div>
+
+            {/* Title */}
             <div>
               <label
                 htmlFor="edit-design-title"
@@ -241,6 +321,53 @@ export function AdminDesigns() {
                 className="w-full px-3 py-2.5 rounded-xl border border-border bg-muted/30 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
               />
             </div>
+
+            {/* Category */}
+            <div>
+              <p className="text-xs font-semibold text-muted-foreground block mb-1.5">
+                CATEGORY
+              </p>
+              <div className="flex gap-2">
+                {(["embroidery", "blouse"] as Category[]).map((cat) => (
+                  <button
+                    type="button"
+                    key={cat}
+                    data-ocid={`admin.edit_design.category_${cat}.toggle`}
+                    onClick={() => handleCategoryChange(cat)}
+                    className={`flex-1 py-2 rounded-xl text-sm font-semibold capitalize transition-colors ${
+                      editCategory === cat
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-muted text-muted-foreground"
+                    }`}
+                  >
+                    {cat}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Subcategory */}
+            <div>
+              <p className="text-xs font-semibold text-muted-foreground block mb-1.5">
+                SUBCATEGORY
+              </p>
+              <select
+                data-ocid="admin.edit_design.subcategory.select"
+                value={editSubcategory}
+                onChange={(e) =>
+                  setEditSubcategory(e.target.value as Subcategory)
+                }
+                className="w-full px-3 py-2.5 rounded-xl border border-border bg-card text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+              >
+                {CATEGORY_SUBCATEGORIES[editCategory].map((sub) => (
+                  <option key={sub} value={sub}>
+                    {SUBCATEGORY_LABELS[sub]}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Images */}
             <div>
               <p className="text-xs font-semibold text-muted-foreground block mb-1.5">
                 IMAGES ({editImages.length}/5)
@@ -278,6 +405,8 @@ export function AdminDesigns() {
                 )}
               </div>
             </div>
+
+            {/* Bridal Toggle */}
             <div className="flex items-center justify-between">
               <p className="text-sm font-semibold text-foreground">
                 Bridal Tag 👑
@@ -293,13 +422,15 @@ export function AdminDesigns() {
                 />
               </button>
             </div>
+
             <button
               type="button"
               data-ocid="admin.edit_design.save.button"
               onClick={handleEditSave}
-              className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-bold text-sm"
+              disabled={isSaving}
+              className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-bold text-sm disabled:opacity-60"
             >
-              Save Changes
+              {isSaving ? "Saving..." : "Save Changes"}
             </button>
           </div>
         </div>
