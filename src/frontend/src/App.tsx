@@ -26,7 +26,7 @@ type PageEntry =
   | { page: "bridal" }
   | { page: "orders" }
   | { page: "trial-room" }
-  | { page: "virtual-trial-room" }
+  | { page: "virtual-trial-room"; initialDesign?: Design }
   | {
       page: "design-detail";
       design: Design;
@@ -73,9 +73,19 @@ export default function App() {
     navigate({ page: "trial-room" });
   }, [navigate]);
 
-  const handleOpenVirtualTrial = useCallback(() => {
-    navigate({ page: "virtual-trial-room" });
-  }, [navigate]);
+  const handleOpenVirtualTrial = useCallback(
+    (initialDesign?: Design) => {
+      navigate({ page: "virtual-trial-room", initialDesign });
+    },
+    [navigate],
+  );
+
+  const handleAddToVirtualTrialRoom = useCallback(
+    (design: Design) => {
+      navigate({ page: "virtual-trial-room", initialDesign: design });
+    },
+    [navigate],
+  );
 
   const handlePreviewTrialItem = useCallback(
     (item: TrialRoomItem) => {
@@ -133,18 +143,33 @@ export default function App() {
           <HomePage
             onNavigate={handleTabChange}
             onSelectDesign={handleSelectDesign}
-            onOpenVirtualTrial={handleOpenVirtualTrial}
+            onOpenVirtualTrial={() => handleOpenVirtualTrial()}
           />
         );
 
       case "embroidery":
-        return <EmbroideryPage onSelectDesign={handleSelectDesign} />;
+        return (
+          <EmbroideryPage
+            onSelectDesign={handleSelectDesign}
+            onAddToTrialRoom={handleAddToVirtualTrialRoom}
+          />
+        );
 
       case "blouse":
-        return <BlousePage onSelectDesign={handleSelectDesign} />;
+        return (
+          <BlousePage
+            onSelectDesign={handleSelectDesign}
+            onAddToTrialRoom={handleAddToVirtualTrialRoom}
+          />
+        );
 
       case "bridal":
-        return <BridalPage onSelectDesign={handleSelectDesign} />;
+        return (
+          <BridalPage
+            onSelectDesign={handleSelectDesign}
+            onAddToTrialRoom={handleAddToVirtualTrialRoom}
+          />
+        );
 
       case "orders":
         return <StitchingOrdersPage />;
@@ -152,8 +177,18 @@ export default function App() {
       case "trial-room":
         return <TrialRoomPage onPreviewDesign={handlePreviewTrialItem} />;
 
-      case "virtual-trial-room":
-        return <VirtualTrialRoomPage onBack={goBack} />;
+      case "virtual-trial-room": {
+        const p = currentPage as {
+          page: "virtual-trial-room";
+          initialDesign?: Design;
+        };
+        return (
+          <VirtualTrialRoomPage
+            onBack={goBack}
+            initialDesign={p.initialDesign}
+          />
+        );
+      }
 
       case "design-detail": {
         const p = currentPage as {
@@ -167,6 +202,7 @@ export default function App() {
             design={p.design}
             designs={p.designs}
             initialIndex={p.initialIndex}
+            onAddToTrialRoom={handleAddToVirtualTrialRoom}
           />
         );
       }
@@ -176,7 +212,7 @@ export default function App() {
           <HomePage
             onNavigate={handleTabChange}
             onSelectDesign={handleSelectDesign}
-            onOpenVirtualTrial={handleOpenVirtualTrial}
+            onOpenVirtualTrial={() => handleOpenVirtualTrial()}
           />
         );
     }

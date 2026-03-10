@@ -51,7 +51,7 @@ export function DesignCard({
               e.stopPropagation();
               onViewDesign();
             }}
-            className="flex-1 text-[10px] font-semibold py-1 px-2 rounded-lg border border-primary text-primary bg-transparent hover:bg-primary/10 transition-colors"
+            className="flex-1 text-[11px] font-semibold py-1 px-2 rounded-lg border border-primary text-primary bg-transparent hover:bg-primary/10 transition-colors"
           >
             View Design
           </button>
@@ -64,9 +64,9 @@ export function DesignCard({
               e.stopPropagation();
               onAddToTrialRoom();
             }}
-            className="flex-1 text-[10px] font-semibold py-1 px-2 rounded-lg bg-muted text-muted-foreground hover:bg-muted/80 transition-colors"
+            className="flex-1 text-[11px] font-semibold py-1 px-2 rounded-lg bg-primary/15 text-primary border border-primary/30 hover:bg-primary/25 transition-colors"
           >
-            + Trial Room
+            Add to Trial Room
           </button>
         )}
       </div>
@@ -119,9 +119,11 @@ export function DesignCard({
           <p className="text-xs font-medium text-foreground line-clamp-1 mt-0.5">
             {design.title}
           </p>
-          <p className="text-[10px] text-muted-foreground mt-0.5">
-            {subcategoryLabel}
-          </p>
+          {design.price != null ? (
+            <p className="text-[10px] text-muted-foreground mt-0.5">
+              ₹{design.price}
+            </p>
+          ) : null}
         </div>
 
         {actionButtons}
@@ -135,26 +137,36 @@ export function DesignCard({
         type="button"
         data-ocid="design.card"
         onClick={onClick}
-        className="group w-full text-left rounded-xl overflow-hidden bg-black shadow-card hover:shadow-card-hover transition-all active:scale-98 animate-fade-in"
+        className="group relative w-full text-left rounded-xl overflow-hidden bg-card shadow-card hover:shadow-card-hover transition-all active:scale-98 animate-fade-in"
       >
-        {/* Image — contain, auto height, black bg */}
-        <div className="w-full flex items-center justify-center bg-black">
+        {/* Full wide image — no fixed aspect ratio, height auto */}
+        <div className="relative w-full bg-black">
           {firstImage ? (
             <img
               src={getOptimizedImageUrl(firstImage, 800)}
               alt={design.title}
               className="w-full h-auto object-contain"
-              style={{ display: "block", objectPosition: "center" }}
+              style={{ objectPosition: "center" }}
               loading="lazy"
             />
           ) : (
-            <div className="w-full flex items-center justify-center py-8 bg-black">
+            <div className="h-24 flex items-center justify-center">
               <span className="text-3xl">🧵</span>
+            </div>
+          )}
+          {design.images.length > 1 && (
+            <div className="absolute top-1.5 right-1.5 bg-black/60 text-white text-[9px] px-1 py-0.5 rounded-full z-10">
+              1/{design.images.length}
+            </div>
+          )}
+          {design.isBridal && (
+            <div className="absolute top-1.5 left-1.5 w-6 h-6 flex items-center justify-center bg-yellow-400/90 rounded-full shadow-sm z-10">
+              <span className="text-[11px] leading-none">👑</span>
             </div>
           )}
         </div>
 
-        {/* Bottom info section */}
+        {/* Info section below image */}
         <div className="bg-card px-2 py-2">
           <p className="text-[10px] font-bold text-primary tracking-wide">
             {design.designCode}
@@ -168,76 +180,103 @@ export function DesignCard({
         </div>
 
         {actionButtons}
-
-        {/* Multi-image indicator */}
-        {design.images.length > 1 && (
-          <div className="absolute top-1.5 right-1.5 bg-black/60 text-white text-[9px] px-1 py-0.5 rounded-full">
-            1/{design.images.length}
-          </div>
-        )}
-        {/* 👑 Bridal crown icon */}
-        {design.isBridal && (
-          <div className="absolute top-1.5 left-1.5 w-6 h-6 flex items-center justify-center bg-yellow-400/90 rounded-full shadow-sm">
-            <span className="text-[11px] leading-none">👑</span>
-          </div>
-        )}
       </button>
     );
   }
 
-  // --- Standard layout (square or wide) ---
-  const aspectPadding = isWide ? "56.25%" : "100%";
+  if (isWide) {
+    // 16:9 wide layout (legacy)
+    return (
+      <button
+        type="button"
+        data-ocid="design.card"
+        onClick={onClick}
+        className="group relative w-full text-left rounded-xl overflow-hidden bg-card shadow-card hover:shadow-card-hover transition-all active:scale-98 animate-fade-in"
+      >
+        <div className="relative w-full" style={{ paddingBottom: "56.25%" }}>
+          <div className="absolute inset-0 bg-black flex items-center justify-center">
+            {firstImage ? (
+              <img
+                src={getOptimizedImageUrl(firstImage, 800)}
+                alt={design.title}
+                className="w-full h-full object-contain"
+                loading="lazy"
+              />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center">
+                <span className="text-3xl">🧵</span>
+              </div>
+            )}
+          </div>
+          {design.images.length > 1 && (
+            <div className="absolute top-1.5 right-1.5 bg-black/60 text-white text-[9px] px-1 py-0.5 rounded-full z-10">
+              1/{design.images.length}
+            </div>
+          )}
+          {design.isBridal && (
+            <div className="absolute top-1.5 left-1.5 w-6 h-6 flex items-center justify-center bg-yellow-400/90 rounded-full shadow-sm z-10">
+              <span className="text-[11px] leading-none">👑</span>
+            </div>
+          )}
+        </div>
+        <div className="bg-card px-2 py-2">
+          <p className="text-[10px] font-bold text-primary tracking-wide">
+            {design.designCode}
+          </p>
+          <p className="text-xs font-medium text-foreground line-clamp-1 mt-0.5">
+            {design.title}
+          </p>
+        </div>
+        {actionButtons}
+      </button>
+    );
+  }
 
+  // Default: square layout
   return (
     <button
       type="button"
       data-ocid="design.card"
       onClick={onClick}
-      className="group w-full text-left rounded-xl overflow-hidden bg-card shadow-card hover:shadow-card-hover transition-all active:scale-98 animate-fade-in"
+      className="group relative w-full text-left rounded-xl overflow-hidden bg-card shadow-card hover:shadow-card-hover transition-all active:scale-98 animate-fade-in"
     >
-      {/* Thumbnail */}
-      <div className="relative w-full" style={{ paddingBottom: aspectPadding }}>
-        <div className="absolute inset-0">
-          {firstImage ? (
-            <img
-              src={getOptimizedImageUrl(firstImage, 800)}
-              alt={design.title}
-              className="w-full h-full object-contain"
-              style={{ background: "#000" }}
-              loading="lazy"
-            />
-          ) : (
-            <div className="w-full h-full bg-muted flex items-center justify-center">
-              <span className="text-3xl">🧵</span>
-            </div>
-          )}
-          {/* Code overlay */}
-          <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent px-2 py-1.5">
-            <span className="text-white text-[10px] font-bold tracking-wide">
-              {design.designCode}
-            </span>
+      <div className="relative aspect-square bg-muted">
+        {firstImage ? (
+          <img
+            src={getOptimizedImageUrl(firstImage, 400)}
+            alt={design.title}
+            className="w-full h-full object-cover"
+            loading="lazy"
+          />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center">
+            <span className="text-3xl">🧵</span>
           </div>
-          {/* Multi-image indicator */}
-          {design.images.length > 1 && (
-            <div className="absolute top-1.5 right-1.5 bg-black/50 text-white text-[9px] px-1 py-0.5 rounded-full">
-              1/{design.images.length}
-            </div>
-          )}
-          {/* 👑 Bridal crown icon */}
-          {design.isBridal && (
-            <div className="absolute top-1.5 left-1.5 w-6 h-6 flex items-center justify-center bg-yellow-400/90 rounded-full shadow-sm">
-              <span className="text-[11px] leading-none">👑</span>
-            </div>
-          )}
-        </div>
+        )}
+        {design.images.length > 1 && (
+          <div className="absolute top-1.5 right-1.5 bg-black/60 text-white text-[9px] px-1 py-0.5 rounded-full">
+            1/{design.images.length}
+          </div>
+        )}
+        {design.isBridal && (
+          <div className="absolute top-1.5 left-1.5 w-6 h-6 flex items-center justify-center bg-yellow-400/90 rounded-full shadow-sm">
+            <span className="text-[11px] leading-none">👑</span>
+          </div>
+        )}
       </div>
-      {/* Title */}
-      <div className="px-2 py-1.5">
-        <p className="text-xs font-medium text-foreground line-clamp-1">
+      <div className="bg-card px-2 py-2">
+        <p className="text-[10px] font-bold text-primary tracking-wide">
+          {design.designCode}
+        </p>
+        <p className="text-xs font-medium text-foreground line-clamp-1 mt-0.5">
           {design.title}
         </p>
+        {design.price != null ? (
+          <p className="text-[10px] text-muted-foreground mt-0.5">
+            ₹{design.price}
+          </p>
+        ) : null}
       </div>
-
       {actionButtons}
     </button>
   );

@@ -1,12 +1,11 @@
 import { useState } from "react";
-import { toast } from "sonner";
 import { DesignCard } from "../components/DesignCard";
 import { useDesigns } from "../hooks/useFirestore";
 import type { Design, Subcategory } from "../lib/storage";
-import { useAppStore } from "../store/appStore";
 
 interface EmbroideryPageProps {
   onSelectDesign: (design: Design, designs: Design[], index: number) => void;
+  onAddToTrialRoom?: (design: Design) => void;
 }
 
 const subcategories: {
@@ -18,22 +17,24 @@ const subcategories: {
   {
     id: "embroidery",
     label: "Embroidery",
-    emoji: "🧵",
+    emoji: "\ud83e\uddf5",
     desc: "Traditional & modern embroidery designs",
   },
   {
     id: "ready-blouse-embroidery",
     label: "Ready Blouse Embroidery",
-    emoji: "✨",
+    emoji: "\u2728",
     desc: "Pre-made embroidery for blouses",
   },
 ];
 
-export function EmbroideryPage({ onSelectDesign }: EmbroideryPageProps) {
+export function EmbroideryPage({
+  onSelectDesign,
+  onAddToTrialRoom,
+}: EmbroideryPageProps) {
   const [activeSubcategory, setActiveSubcategory] =
     useState<Subcategory | null>(null);
   const { data: allDesigns, loading } = useDesigns();
-  const { addToTrialRoom } = useAppStore();
 
   const handleCardTap = (subId: Subcategory) => {
     setActiveSubcategory((prev) => (prev === subId ? null : subId));
@@ -44,20 +45,6 @@ export function EmbroideryPage({ onSelectDesign }: EmbroideryPageProps) {
         (d) => d.subcategory === activeSubcategory && !d.isHidden,
       )
     : [];
-
-  const handleAddToTrialRoom = (design: Design) => {
-    const result = addToTrialRoom({
-      id: design.id,
-      designCode: design.designCode,
-      imageURL: design.images[0] || "",
-      category: design.category,
-      addedAt: new Date().toISOString(),
-    });
-    if (result === "added") toast.success("Design added to Trial Room");
-    else if (result === "duplicate") toast.info("Already in Trial Room");
-    else if (result === "limit")
-      toast.error("Trial Room limit reached (max 10)");
-  };
 
   return (
     <div className="min-h-full">
@@ -97,23 +84,35 @@ export function EmbroideryPage({ onSelectDesign }: EmbroideryPageProps) {
                 <span className="text-2xl">{sub.emoji}</span>
               </div>
               <h3
-                className={`font-bold text-sm leading-tight ${isActive ? "text-primary-foreground" : "text-foreground"}`}
+                className={`font-bold text-sm leading-tight ${
+                  isActive ? "text-primary-foreground" : "text-foreground"
+                }`}
               >
                 {sub.label}
               </h3>
               <p
-                className={`text-xs mt-1 line-clamp-2 ${isActive ? "text-primary-foreground/70" : "text-muted-foreground"}`}
+                className={`text-xs mt-1 line-clamp-2 ${
+                  isActive
+                    ? "text-primary-foreground/70"
+                    : "text-muted-foreground"
+                }`}
               >
                 {sub.desc}
               </p>
               <div className="mt-2 flex items-center gap-1">
                 <span
-                  className={`text-xs font-bold ${isActive ? "text-primary-foreground" : "text-primary"}`}
+                  className={`text-xs font-bold ${
+                    isActive ? "text-primary-foreground" : "text-primary"
+                  }`}
                 >
                   {count}
                 </span>
                 <span
-                  className={`text-xs ${isActive ? "text-primary-foreground/70" : "text-muted-foreground"}`}
+                  className={`text-xs ${
+                    isActive
+                      ? "text-primary-foreground/70"
+                      : "text-muted-foreground"
+                  }`}
                 >
                   designs
                 </span>
@@ -150,7 +149,7 @@ export function EmbroideryPage({ onSelectDesign }: EmbroideryPageProps) {
               data-ocid="embroidery.gallery.empty_state"
               className="text-center py-12 bg-muted/30 rounded-xl"
             >
-              <span className="text-4xl mb-2 block">🧵</span>
+              <span className="text-4xl mb-2 block">\ud83e\uddf5</span>
               <p className="text-sm text-muted-foreground">No designs yet</p>
             </div>
           ) : (
@@ -164,7 +163,11 @@ export function EmbroideryPage({ onSelectDesign }: EmbroideryPageProps) {
                   onViewDesign={() =>
                     onSelectDesign(design, galleryDesigns, idx)
                   }
-                  onAddToTrialRoom={() => handleAddToTrialRoom(design)}
+                  onAddToTrialRoom={
+                    onAddToTrialRoom
+                      ? () => onAddToTrialRoom(design)
+                      : undefined
+                  }
                 />
               ))}
             </div>

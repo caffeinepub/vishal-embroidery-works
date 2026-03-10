@@ -1,20 +1,21 @@
 import { useState } from "react";
-import { toast } from "sonner";
 import { DesignCard } from "../components/DesignCard";
 import { useDesigns } from "../hooks/useFirestore";
 import type { Design } from "../lib/storage";
-import { useAppStore } from "../store/appStore";
 
 interface BridalPageProps {
   onSelectDesign: (design: Design, designs: Design[], index: number) => void;
+  onAddToTrialRoom?: (design: Design) => void;
 }
 
 type BridalFilter = "embroidery" | "blouse" | null;
 
-export function BridalPage({ onSelectDesign }: BridalPageProps) {
+export function BridalPage({
+  onSelectDesign,
+  onAddToTrialRoom,
+}: BridalPageProps) {
   const [activeFilter, setActiveFilter] = useState<BridalFilter>(null);
   const { data: allDesigns, loading } = useDesigns();
-  const { addToTrialRoom } = useAppStore();
 
   const bridalEmbCount = allDesigns.filter(
     (d) => d.isBridal && d.category === "embroidery" && !d.isHidden,
@@ -33,31 +34,15 @@ export function BridalPage({ onSelectDesign }: BridalPageProps) {
     setActiveFilter((prev) => (prev === filter ? null : filter));
   };
 
-  const handleAddToTrialRoom = (design: Design) => {
-    const result = addToTrialRoom({
-      id: design.id,
-      designCode: design.designCode,
-      imageURL: design.images[0] || "",
-      category: design.category,
-      addedAt: new Date().toISOString(),
-    });
-    if (result === "added") toast.success("Design added to Trial Room");
-    else if (result === "duplicate") toast.info("Already in Trial Room");
-    else if (result === "limit")
-      toast.error("Trial Room limit reached (max 10)");
-  };
-
   return (
     <div className="min-h-full">
-      {/* Header */}
       <div className="px-4 pt-4 pb-3">
         <h2 className="text-xl font-bold text-foreground">Bridal Collection</h2>
         <p className="text-xs text-muted-foreground mt-0.5">
-          Designs tagged as Bridal 👑
+          Designs tagged as Bridal \ud83d\udc51
         </p>
       </div>
 
-      {/* Section Cards */}
       <div className="px-4 grid grid-cols-2 gap-3">
         <button
           type="button"
@@ -70,11 +55,9 @@ export function BridalPage({ onSelectDesign }: BridalPageProps) {
           }`}
         >
           <div
-            className={`w-12 h-12 rounded-xl flex items-center justify-center mb-3 ${
-              activeFilter === "embroidery" ? "bg-white/20" : "bg-primary/10"
-            }`}
+            className={`w-12 h-12 rounded-xl flex items-center justify-center mb-3 ${activeFilter === "embroidery" ? "bg-white/20" : "bg-primary/10"}`}
           >
-            <span className="text-2xl">✨</span>
+            <span className="text-2xl">\u2728</span>
           </div>
           <h3
             className={`font-bold text-sm leading-tight ${activeFilter === "embroidery" ? "text-primary-foreground" : "text-foreground"}`}
@@ -111,11 +94,9 @@ export function BridalPage({ onSelectDesign }: BridalPageProps) {
           }`}
         >
           <div
-            className={`w-12 h-12 rounded-xl flex items-center justify-center mb-3 ${
-              activeFilter === "blouse" ? "bg-white/20" : "bg-accent/20"
-            }`}
+            className={`w-12 h-12 rounded-xl flex items-center justify-center mb-3 ${activeFilter === "blouse" ? "bg-white/20" : "bg-accent/20"}`}
           >
-            <span className="text-2xl">👑</span>
+            <span className="text-2xl">\ud83d\udc51</span>
           </div>
           <h3
             className={`font-bold text-sm leading-tight ${activeFilter === "blouse" ? "text-primary-foreground" : "text-foreground"}`}
@@ -142,18 +123,15 @@ export function BridalPage({ onSelectDesign }: BridalPageProps) {
         </button>
       </div>
 
-      {/* Info box */}
       <div className="mx-4 mt-3 bg-primary/5 border border-primary/20 rounded-xl p-3">
         <p className="text-xs text-foreground font-medium">
-          💡 About Bridal Collection
+          \ud83d\udca1 About Bridal Collection
         </p>
         <p className="text-xs text-muted-foreground mt-1">
           Designs tagged as "Bridal" during upload automatically appear here.
-          Ask admin to tag any design as Bridal.
         </p>
       </div>
 
-      {/* Inline Gallery */}
       {activeFilter && (
         <div className="mt-4 px-4">
           <div className="flex items-center justify-between mb-3">
@@ -180,7 +158,7 @@ export function BridalPage({ onSelectDesign }: BridalPageProps) {
               data-ocid="bridal.gallery.empty_state"
               className="text-center py-12 bg-muted/30 rounded-xl"
             >
-              <span className="text-4xl mb-2 block">👑</span>
+              <span className="text-4xl mb-2 block">\ud83d\udc51</span>
               <p className="text-sm text-muted-foreground">
                 No bridal designs yet
               </p>
@@ -196,7 +174,11 @@ export function BridalPage({ onSelectDesign }: BridalPageProps) {
                   onViewDesign={() =>
                     onSelectDesign(design, galleryDesigns, idx)
                   }
-                  onAddToTrialRoom={() => handleAddToTrialRoom(design)}
+                  onAddToTrialRoom={
+                    onAddToTrialRoom
+                      ? () => onAddToTrialRoom(design)
+                      : undefined
+                  }
                 />
               ))}
             </div>

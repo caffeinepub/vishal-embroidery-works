@@ -1,12 +1,11 @@
 import { useState } from "react";
-import { toast } from "sonner";
 import { DesignCard } from "../components/DesignCard";
 import { useDesigns } from "../hooks/useFirestore";
 import type { Design, Subcategory } from "../lib/storage";
-import { useAppStore } from "../store/appStore";
 
 interface BlousePageProps {
   onSelectDesign: (design: Design, designs: Design[], index: number) => void;
+  onAddToTrialRoom?: (design: Design) => void;
 }
 
 const subcategories: {
@@ -18,34 +17,36 @@ const subcategories: {
   {
     id: "simple-blouse",
     label: "Simple Blouse",
-    emoji: "👗",
+    emoji: "\ud83d\udc57",
     desc: "Clean, elegant simple blouse designs",
   },
   {
     id: "boat-neck",
     label: "Boat Neck Blouse",
-    emoji: "🌊",
+    emoji: "\ud83c\udf0a",
     desc: "Classic boat neck style blouses",
   },
   {
     id: "bridal-blouse",
     label: "Bridal Blouse",
-    emoji: "💍",
+    emoji: "\ud83d\udc8d",
     desc: "Exclusive bridal blouse collection",
   },
   {
     id: "designer-blouse",
     label: "Designer Blouse",
-    emoji: "⭐",
+    emoji: "\u2b50",
     desc: "Premium designer blouse patterns",
   },
 ];
 
-export function BlousePage({ onSelectDesign }: BlousePageProps) {
+export function BlousePage({
+  onSelectDesign,
+  onAddToTrialRoom,
+}: BlousePageProps) {
   const [activeSubcategory, setActiveSubcategory] =
     useState<Subcategory | null>(null);
   const { data: allDesigns, loading } = useDesigns();
-  const { addToTrialRoom } = useAppStore();
 
   const handleCardTap = (subId: Subcategory) => {
     setActiveSubcategory((prev) => (prev === subId ? null : subId));
@@ -57,23 +58,8 @@ export function BlousePage({ onSelectDesign }: BlousePageProps) {
       )
     : [];
 
-  const handleAddToTrialRoom = (design: Design) => {
-    const result = addToTrialRoom({
-      id: design.id,
-      designCode: design.designCode,
-      imageURL: design.images[0] || "",
-      category: design.category,
-      addedAt: new Date().toISOString(),
-    });
-    if (result === "added") toast.success("Design added to Trial Room");
-    else if (result === "duplicate") toast.info("Already in Trial Room");
-    else if (result === "limit")
-      toast.error("Trial Room limit reached (max 10)");
-  };
-
   return (
     <div className="min-h-full">
-      {/* Header */}
       <div className="px-4 pt-4 pb-3">
         <h2 className="text-xl font-bold text-foreground">Blouse Designs</h2>
         <p className="text-xs text-muted-foreground mt-0.5">
@@ -81,7 +67,6 @@ export function BlousePage({ onSelectDesign }: BlousePageProps) {
         </p>
       </div>
 
-      {/* Subcategory Grid */}
       <div className="px-4 grid grid-cols-2 gap-3">
         {subcategories.map((sub) => {
           const count = allDesigns.filter(
@@ -109,23 +94,35 @@ export function BlousePage({ onSelectDesign }: BlousePageProps) {
                 <span className="text-2xl">{sub.emoji}</span>
               </div>
               <h3
-                className={`font-bold text-sm leading-tight ${isActive ? "text-primary-foreground" : "text-foreground"}`}
+                className={`font-bold text-sm leading-tight ${
+                  isActive ? "text-primary-foreground" : "text-foreground"
+                }`}
               >
                 {sub.label}
               </h3>
               <p
-                className={`text-xs mt-1 line-clamp-2 ${isActive ? "text-primary-foreground/70" : "text-muted-foreground"}`}
+                className={`text-xs mt-1 line-clamp-2 ${
+                  isActive
+                    ? "text-primary-foreground/70"
+                    : "text-muted-foreground"
+                }`}
               >
                 {sub.desc}
               </p>
               <div className="mt-2 flex items-center gap-1">
                 <span
-                  className={`text-xs font-bold ${isActive ? "text-primary-foreground" : "text-primary"}`}
+                  className={`text-xs font-bold ${
+                    isActive ? "text-primary-foreground" : "text-primary"
+                  }`}
                 >
                   {count}
                 </span>
                 <span
-                  className={`text-xs ${isActive ? "text-primary-foreground/70" : "text-muted-foreground"}`}
+                  className={`text-xs ${
+                    isActive
+                      ? "text-primary-foreground/70"
+                      : "text-muted-foreground"
+                  }`}
                 >
                   designs
                 </span>
@@ -135,7 +132,6 @@ export function BlousePage({ onSelectDesign }: BlousePageProps) {
         })}
       </div>
 
-      {/* Inline Gallery */}
       {activeSubcategory && (
         <div className="mt-4 px-4">
           <div className="flex items-center justify-between mb-3">
@@ -162,7 +158,7 @@ export function BlousePage({ onSelectDesign }: BlousePageProps) {
               data-ocid="blouse.gallery.empty_state"
               className="text-center py-12 bg-muted/30 rounded-xl"
             >
-              <span className="text-4xl mb-2 block">👗</span>
+              <span className="text-4xl mb-2 block">\ud83d\udc57</span>
               <p className="text-sm text-muted-foreground">No designs yet</p>
             </div>
           ) : (
@@ -176,7 +172,11 @@ export function BlousePage({ onSelectDesign }: BlousePageProps) {
                   onViewDesign={() =>
                     onSelectDesign(design, galleryDesigns, idx)
                   }
-                  onAddToTrialRoom={() => handleAddToTrialRoom(design)}
+                  onAddToTrialRoom={
+                    onAddToTrialRoom
+                      ? () => onAddToTrialRoom(design)
+                      : undefined
+                  }
                 />
               ))}
             </div>

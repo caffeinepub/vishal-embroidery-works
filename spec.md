@@ -1,44 +1,40 @@
-# Vishal Embroidery Works — Virtual Trial Room
+# Vishal Embroidery Works – AI Virtual Trial Room
 
 ## Current State
-The app has an existing `TrialRoomPage` (a simple saved-designs list, max 10 designs). The `HomePage` has a hero banner, search bar, and quick access cards. Navigation is via bottom nav and a page stack in `App.tsx`. Cart items are `CartItem` objects in localStorage.
+The app has a VirtualTrialRoomPage with: 4-view mannequin (front/back/left/right), embroidery zone overlays, manual drag/resize/rotate per zone, fabric photo upload with dominant color detection, blouse color presets, embroidery color pickers, design slider with Firestore designs, and Add to Stitching action.
+
+Mannequin images are SVG-based placeholder generated images. The embroidery zone splitting uses a naive 3-part horizontal split of the design image.
 
 ## Requested Changes (Diff)
 
 ### Add
-- **`VirtualTrialRoomPage.tsx`** — A full virtual try-on screen featuring:
-  - Search bar (placeholder "Search Embroidery Design") with live Firestore search by code/name/tags
-  - Front / Back view toggle
-  - SVG-based female mannequin upper torso (shoulders + neck + blouse, no full body) rendered with dynamic neck cutout shapes
-  - Neck type selector (Front: U Neck, Boat Neck, V Neck, Round Neck, Square Neck; Back: Deep U, Keyhole, Dori Style, V Back, Round Back)
-  - Blouse color picker (HEX/swatch)
-  - Embroidery Color 1 & Color 2 pickers (stored as metadata for the order)
-  - Selected embroidery design overlay on the neckline area of the SVG mannequin
-  - "Upload My Blouse Photo" button — reads dominant color via Canvas API and applies to mannequin blouse; user can still override manually
-  - Cancel button → goes back
-  - Add to Stitching button → adds a CartItem (with designCode, view, neck type, blouse color, embroidery colors) to the stitching cart and shows toast
-- **`storage.ts`** — Add `VirtualTrialConfig` interface; extend `CartItem` with optional trial config fields: `view`, `neckType`, `blouseColor`, `embColor1`, `embColor2`, `uploadedBlousePhoto`
-- **`HomePage.tsx`** — Add a large "Open Trial Room" button below quick access cards
-- **`App.tsx`** — Add `virtual-trial-room` page entry to page stack and render `VirtualTrialRoomPage`
+- **Neck shape selector**: U Neck, Boat Neck, Deep Back, Princess Cut — each renders a different SVG neckline shape on the mannequin
+- **Sleeve length selector**: Short Sleeve, Elbow Sleeve, Full Sleeve — updates the SVG mannequin sleeve length
+- **Mannequin SVG component**: Draw a realistic boutique mannequin (waist mannequin, Indian blouse style, short sleeves, clear neckline) using SVG inline — color driven by blouseColor state, neckShape, sleeveLength props
+- **Design image auto-crop**: When a design is selected, split the image into 3 parts using CSS clip regions: top-left = front neck design, top-right = back neck design, bottom = sleeve border
+- **Sleeve border mirror logic**: Render left sleeve and mirror it horizontally for right sleeve
+- **AI Realistic Preview button**: "Generate AI Preview" button that opens a modal showing model selection (4 models with skin tone/body shape options) and a simulated loading state, then displays a composite preview (canvas-based composite of mannequin + design image + selected model tone overlay)
+- **Model selector**: 4 model cards (light skin, medium skin, dark skin, different body shape) shown in the AI preview modal
+- **Design browser at bottom**: Horizontal swipeable slider at the very bottom showing current subcategory designs (already exists, keep and improve)
+- **Neck shape updates embroidery placement**: When neck shape changes, adjust the frontNeck/backNeck zone default positions to match the selected neckline
 
 ### Modify
-- `storage.ts` — Extend `CartItem` interface with optional trial config fields
-- `HomePage.tsx` — Insert "Open Trial Room" CTA
-- `App.tsx` — Add virtual trial room navigation and page rendering
+- **VirtualTrialRoomPage**: Replace generated image mannequin with inline SVG mannequin component; add neck shape selector and sleeve length selector UI sections; add AI Preview button and modal; improve the design image zone splitting to use CSS `objectPosition` to show the correct third of the image
+- **Mannequin images**: Replace file-based mannequin images with an inline SVG `<BlouseMannequin>` component that accepts `blouseColor`, `neckShape`, `sleeveLength`, `view` props and renders accordingly
+- **Bottom design slider**: Make it always visible and fixed at the bottom of the preview section
 
 ### Remove
-- Nothing removed from existing features
+- References to external mannequin image files (will use inline SVG instead)
 
 ## Implementation Plan
-1. Extend `CartItem` in `storage.ts` with optional trial config fields
-2. Build `VirtualTrialRoomPage.tsx`:
-   a. SVG mannequin with dynamic blouse color and neck-shape clip paths (5 front + 5 back variants)
-   b. Embroidery design image overlay positioned at neckline, clipped to neck shape
-   c. Search + filter by front/back view
-   d. Neck type pills selector
-   e. Color pickers for blouse, emb1, emb2
-   f. Upload photo button with Canvas dominant-color detection
-   g. Real-time state updates (all changes instant, no reload)
-   h. Cancel (goBack) and Add to Stitching (addToCart + toast + goBack)
-3. Add "Open Trial Room" button to `HomePage.tsx`
-4. Wire navigation in `App.tsx`
+1. Create `BlouseMannequin.tsx` — inline SVG component that draws a boutique waist mannequin with Indian blouse, accepts color/neckShape/sleeveLength/view, renders 4 different body orientations (front, back, left, right) using SVG path transforms
+2. Update `VirtualTrialRoomPage.tsx`:
+   - Import and use `BlouseMannequin` instead of `<img src=MANNEQUIN_IMAGES>`
+   - Add `neckShape` and `sleeveLength` state with selector UI (pill buttons)
+   - Add neck shape → zone position mapping so embroidery auto-repositions
+   - Improve zone image part splitting: use `objectPosition` to show the 1/3 slice cleanly
+   - Add right sleeve mirror using CSS `scaleX(-1)` on the rightSleeve zone
+   - Add `showAIPreviewModal` state and `selectedModel` state
+   - Add "Generate AI Preview" button in the controls area
+   - Add `AIPreviewModal` inline component: shows 4 model options, loading state, then composite preview
+3. Keep all existing functionality: search, tabs, subcategories, blouse color, embroidery colors, fabric photo, Add to Stitching, Cancel

@@ -1,6 +1,7 @@
 import {
   ChevronLeft,
   ChevronRight,
+  FlaskConical,
   GitCompare,
   Share2,
   ShoppingBag,
@@ -16,16 +17,17 @@ interface DesignDetailPageProps {
   design: Design;
   designs: Design[];
   initialIndex: number;
+  onAddToTrialRoom?: (design: Design) => void;
 }
 
 export function DesignDetailPage({
   design,
   designs,
   initialIndex,
+  onAddToTrialRoom,
 }: DesignDetailPageProps) {
   const { addToCart, cart, addToCompare, compareDesigns } = useAppStore();
 
-  // Design-to-design navigation state
   const [currentIndex, setCurrentIndex] = useState(
     designs.length > 0 ? initialIndex : 0,
   );
@@ -34,8 +36,6 @@ export function DesignDetailPage({
   const isInCart = cart.some((c) => c.designId === currentDesign.id);
   const isInCompare = compareDesigns.some((d) => d.id === currentDesign.id);
 
-  // Page-level swipe detection for design-to-design navigation
-  // Only triggered on the info section BELOW the image slider
   const pageSwipeTouchStartX = useRef(0);
   const pageSwipeTouchStartY = useRef(0);
 
@@ -54,18 +54,11 @@ export function DesignDetailPage({
       pageSwipeTouchStartY.current -
       (e.changedTouches[0]?.clientY ?? pageSwipeTouchStartY.current);
 
-    // Only process clearly horizontal swipes
     if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 60) {
       if (deltaX > 0) {
-        // Swipe left → next design
-        if (currentIndex < designs.length - 1) {
-          setCurrentIndex((i) => i + 1);
-        }
+        if (currentIndex < designs.length - 1) setCurrentIndex((i) => i + 1);
       } else {
-        // Swipe right → prev design
-        if (currentIndex > 0) {
-          setCurrentIndex((i) => i - 1);
-        }
+        if (currentIndex > 0) setCurrentIndex((i) => i - 1);
       }
     }
   };
@@ -73,7 +66,6 @@ export function DesignDetailPage({
   const goToPrev = () => {
     if (currentIndex > 0) setCurrentIndex((i) => i - 1);
   };
-
   const goToNext = () => {
     if (currentIndex < designs.length - 1) setCurrentIndex((i) => i + 1);
   };
@@ -93,15 +85,12 @@ export function DesignDetailPage({
   };
 
   const handleShare = async () => {
-    const text = `✨ Design: ${currentDesign.designCode}\n${currentDesign.title}\n\nVishal Embroidery Works`;
+    const text = `\u2728 Design: ${currentDesign.designCode}\n${currentDesign.title}\n\nVishal Embroidery Works`;
     if (navigator.share) {
       try {
-        await navigator.share({
-          title: currentDesign.title,
-          text,
-        });
+        await navigator.share({ title: currentDesign.title, text });
       } catch {
-        // User cancelled
+        /* cancelled */
       }
     } else {
       try {
@@ -135,7 +124,6 @@ export function DesignDetailPage({
   return (
     <div className="min-h-full">
       {/* Image Slider — 1:1 square container */}
-      {/* Square ensures embroidery designs are always visible and centered */}
       <div
         className="w-full bg-black relative"
         style={{ paddingBottom: "100%", position: "relative" }}
@@ -148,7 +136,6 @@ export function DesignDetailPage({
           />
         </div>
 
-        {/* Design-to-design navigation arrows on image area */}
         {hasPrev && (
           <button
             type="button"
@@ -173,9 +160,7 @@ export function DesignDetailPage({
         )}
       </div>
 
-      {/* Info + Actions — swipe listener here for design-to-design navigation */}
       <div onTouchStart={handlePageTouchStart} onTouchEnd={handlePageTouchEnd}>
-        {/* Design counter + navigation hint */}
         {designs.length > 1 && (
           <div
             data-ocid="design.design_counter.panel"
@@ -209,12 +194,11 @@ export function DesignDetailPage({
               )}
             </div>
             <p className="text-[10px] text-muted-foreground/60">
-              {designs.length > 1 ? "← Swipe to browse →" : ""}
+              {designs.length > 1 ? "\u2190 Swipe to browse \u2192" : ""}
             </p>
           </div>
         )}
 
-        {/* Design Info */}
         <div className="px-4 pt-3 pb-2">
           <div className="flex items-start justify-between gap-2">
             <div className="flex-1 min-w-0">
@@ -224,7 +208,7 @@ export function DesignDetailPage({
                 </span>
                 {currentDesign.isBridal && (
                   <span className="inline-flex items-center bg-accent/20 text-foreground text-xs font-bold px-2.5 py-1 rounded-full">
-                    👑 Bridal
+                    \ud83d\udc51 Bridal
                   </span>
                 )}
               </div>
@@ -238,7 +222,6 @@ export function DesignDetailPage({
           </div>
         </div>
 
-        {/* Action Buttons */}
         <div className="px-4 py-3 space-y-2.5">
           <button
             type="button"
@@ -252,9 +235,22 @@ export function DesignDetailPage({
           >
             <ShoppingBag size={18} />
             {isInCart
-              ? "Added to Stitching Orders ✓"
+              ? "Added to Stitching Orders \u2713"
               : "Add to Stitching Orders"}
           </button>
+
+          {/* Add to Trial Room */}
+          {onAddToTrialRoom && (
+            <button
+              type="button"
+              data-ocid="design.add_trial_room.button"
+              onClick={() => onAddToTrialRoom(currentDesign)}
+              className="w-full py-3.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 bg-card border-2 border-primary/30 text-primary hover:bg-primary/5 active:scale-[0.98] transition-all"
+            >
+              <FlaskConical size={18} />
+              Try in Virtual Trial Room
+            </button>
+          )}
 
           <div className="grid grid-cols-2 gap-2.5">
             <button
@@ -297,7 +293,6 @@ export function DesignDetailPage({
           )}
         </div>
 
-        {/* Design meta */}
         <div className="px-4 pt-1 pb-6">
           <div className="bg-card border border-border rounded-xl p-3">
             <p className="text-xs font-semibold text-muted-foreground mb-2">
@@ -327,7 +322,7 @@ export function DesignDetailPage({
                 <span className="text-xs text-muted-foreground">Price</span>
                 <span className="text-xs font-bold text-foreground">
                   {currentDesign.price != null
-                    ? `₹${currentDesign.price}`
+                    ? `\u20b9${currentDesign.price}`
                     : "Ask in Shop"}
                 </span>
               </div>
