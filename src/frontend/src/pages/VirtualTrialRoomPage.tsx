@@ -4,18 +4,11 @@ import { addDoc, collection } from "firebase/firestore";
 import { Camera, Image, X } from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
+import { BlouseMannequin } from "../components/BlouseMannequin";
+import type { MannequinView } from "../components/BlouseMannequin";
 import { useDesigns } from "../hooks/useFirestore";
 import { db } from "../lib/firebase";
 import type { Design } from "../lib/storage";
-
-type ViewType = "front" | "back" | "left" | "right";
-
-const MANNEQUIN_IMAGES: Record<ViewType, string> = {
-  front: "/assets/generated/mannequin-front.dim_600x800.png",
-  back: "/assets/generated/mannequin-back.dim_600x800.png",
-  left: "/assets/generated/mannequin-left.dim_600x800.png",
-  right: "/assets/generated/mannequin-right.dim_600x800.png",
-};
 
 const BLOUSE_COLORS = [
   { label: "White", value: "#ffffff" },
@@ -30,7 +23,7 @@ const BLOUSE_COLORS = [
 
 const SKELETON_KEYS = ["sk1", "sk2", "sk3", "sk4", "sk5"];
 
-const EMBROIDERY_POSITIONS: Record<ViewType, React.CSSProperties> = {
+const EMBROIDERY_POSITIONS: Record<MannequinView, React.CSSProperties> = {
   front: {
     top: "15%",
     left: "50%",
@@ -56,7 +49,7 @@ export function VirtualTrialRoomPage({
   onBack,
   initialDesign,
 }: VirtualTrialRoomPageProps) {
-  const [activeView, setActiveView] = useState<ViewType>("front");
+  const [activeView, setActiveView] = useState<MannequinView>("front");
   const [blouseColor, setBlouseColor] = useState("#ffffff");
   const [embColor1, setEmbColor1] = useState("#b91c1c");
   const [embColor2, setEmbColor2] = useState("#fbbf24");
@@ -121,7 +114,7 @@ export function VirtualTrialRoomPage({
     }
   }
 
-  const views: { key: ViewType; label: string }[] = [
+  const views: { key: MannequinView; label: string }[] = [
     { key: "front", label: "Front" },
     { key: "back", label: "Back" },
     { key: "left", label: "Left" },
@@ -165,10 +158,12 @@ export function VirtualTrialRoomPage({
         {/* Mannequin Preview */}
         <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
           <div className="relative" style={{ paddingBottom: "133.33%" }}>
-            <img
-              src={MANNEQUIN_IMAGES[activeView]}
-              alt={`${activeView} view mannequin`}
-              className="absolute inset-0 w-full h-full object-contain transition-opacity duration-300"
+            <BlouseMannequin
+              blouseColor={blouseColor}
+              neckShape="u-neck"
+              sleeveLength="short"
+              view={activeView}
+              className="absolute inset-0 w-full h-full"
             />
 
             {fabricPhoto ? (
@@ -178,16 +173,7 @@ export function VirtualTrialRoomPage({
                 className="absolute inset-0 w-full h-full object-cover"
                 style={{ mixBlendMode: "multiply", opacity: 0.65 }}
               />
-            ) : (
-              <div
-                className="absolute inset-0"
-                style={{
-                  backgroundColor: blouseColor,
-                  mixBlendMode: "multiply",
-                  opacity: 0.7,
-                }}
-              />
-            )}
+            ) : null}
 
             {selectedDesign?.images?.[0] && (
               <img

@@ -66,7 +66,7 @@ export function DesignCard({
             }}
             className="flex-1 text-[11px] font-semibold py-1 px-2 rounded-lg bg-primary/15 text-primary border border-primary/30 hover:bg-primary/25 transition-colors"
           >
-            Add to Trial Room
+            Add to Stitching Order
           </button>
         )}
       </div>

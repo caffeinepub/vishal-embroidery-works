@@ -39,7 +39,7 @@ export function BridalPage({
       <div className="px-4 pt-4 pb-3">
         <h2 className="text-xl font-bold text-foreground">Bridal Collection</h2>
         <p className="text-xs text-muted-foreground mt-0.5">
-          Designs tagged as Bridal \ud83d\udc51
+          Designs tagged as Bridal 👑
         </p>
       </div>
 
@@ -57,7 +57,7 @@ export function BridalPage({
           <div
             className={`w-12 h-12 rounded-xl flex items-center justify-center mb-3 ${activeFilter === "embroidery" ? "bg-white/20" : "bg-primary/10"}`}
           >
-            <span className="text-2xl">\u2728</span>
+            <span className="text-2xl">✨</span>
           </div>
           <h3
             className={`font-bold text-sm leading-tight ${activeFilter === "embroidery" ? "text-primary-foreground" : "text-foreground"}`}
@@ -96,7 +96,7 @@ export function BridalPage({
           <div
             className={`w-12 h-12 rounded-xl flex items-center justify-center mb-3 ${activeFilter === "blouse" ? "bg-white/20" : "bg-accent/20"}`}
           >
-            <span className="text-2xl">\ud83d\udc51</span>
+            <span className="text-2xl">👑</span>
           </div>
           <h3
             className={`font-bold text-sm leading-tight ${activeFilter === "blouse" ? "text-primary-foreground" : "text-foreground"}`}
@@ -125,7 +125,7 @@ export function BridalPage({
 
       <div className="mx-4 mt-3 bg-primary/5 border border-primary/20 rounded-xl p-3">
         <p className="text-xs text-foreground font-medium">
-          \ud83d\udca1 About Bridal Collection
+          💡 About Bridal Collection
         </p>
         <p className="text-xs text-muted-foreground mt-1">
           Designs tagged as "Bridal" during upload automatically appear here.
@@ -158,7 +158,7 @@ export function BridalPage({
               data-ocid="bridal.gallery.empty_state"
               className="text-center py-12 bg-muted/30 rounded-xl"
             >
-              <span className="text-4xl mb-2 block">\ud83d\udc51</span>
+              <span className="text-4xl mb-2 block">👑</span>
               <p className="text-sm text-muted-foreground">
                 No bridal designs yet
               </p>

@@ -1,46 +1,26 @@
 # Vishal Embroidery Works
 
 ## Current State
-
-The Virtual Trial Room (VirtualTrialRoomPage.tsx) exists but uses a cartoon SVG mannequin (BlouseMannequin.tsx) with drag/resize/rotate embroidery overlays, tap zones, manual adjustment handles, and rectangle-based embroidery cropping. This system is too complex for customers and must be completely replaced.
-
-The TrialRoomPage.tsx (simple list view) remains unchanged.
+- BridalPage.tsx has broken emoji rendering — raw unicode escape sequences (`\ud83d\udc51`) appear as literal text in JSX
+- VirtualTrialRoomPage.tsx references `/assets/generated/mannequin-*.png` image files that do not exist, so the mannequin preview is broken
+- BlouseMannequin.tsx is a working SVG component (supports front/back/left/right views, blouse color, neck shapes, sleeve lengths) but is NOT used in VirtualTrialRoomPage
+- DesignCard.tsx has "View Design" and "Add to Trial Room" action buttons
 
 ## Requested Changes (Diff)
 
 ### Add
-- New VirtualTrialRoomPage.tsx rebuilt from scratch
-- 4 realistic mannequin images (front, back, left, right views) generated as assets
-- View switcher buttons: Front | Back | Left | Right
-- Blouse color picker — color applied via CSS mix-blend-mode overlay constrained to the blouse area
-- Embroidery overlay: uses design's first image as transparent PNG over the mannequin, auto-positioned based on active view
-- Embroidery Color 1 and Color 2 pickers (CSS hue-rotate tint on embroidery layer)
-- Horizontal design slider below preview showing designs from Firestore
-- Upload My Fabric Photo button (opens file picker with camera/gallery option)
-- Uploaded fabric replaces blouse color layer as texture, embroidery stays on top
-- Cancel button (goBack) and Add to Stitching button (saves to orders and goBack)
+- Nothing new
 
 ### Modify
-- BlouseMannequin.tsx — no longer used by VirtualTrialRoomPage; kept in codebase for safety but not imported
-- App.tsx — no changes needed, existing handleOpenVirtualTrial and handleAddToVirtualTrialRoom remain
+1. **BridalPage.tsx** — Replace all raw unicode escape sequences (`\ud83d\udc51`, `\ud83d\udca1`, `\u2728`) with actual emoji literals (👑, 💡, ✨) or remove emojis and use text/icons instead
+2. **VirtualTrialRoomPage.tsx** — Replace broken `<img>` mannequin images with the `BlouseMannequin` SVG component. Import and use `BlouseMannequin` for the preview section. Keep blouseColor state wired to the component. Wire view switcher (front/back/left/right) to the component's `view` prop. Use default neckShape="u-neck" and sleeveLength="short".
+3. **DesignCard.tsx** — Replace "Add to Trial Room" button label with "Add to Stitching" and wire it to the stitching order action (keep the same `onAddToTrialRoom` prop for now, just update the label). Actually — change the button to show "Add to Stitching Order" and keep the existing callback.
 
 ### Remove
-- All drag / resize / rotate embroidery overlay logic from VirtualTrialRoomPage
-- Cartoon avatar SVG rendering from trial room
-- Rectangle embroidery cropper / zone editor
-- Manual adjustment tap zones
-- AI preview modal (remove to simplify; can be re-added later)
-- Mirror mode
+- Nothing to remove
 
 ## Implementation Plan
-
-1. Generate 4 realistic mannequin images using generate_image tool (front, back, left, right)
-2. Rebuild VirtualTrialRoomPage.tsx:
-   - State: activeView (front|back|left|right), blouseColor, fabricPhoto, selectedDesign, embColor1, embColor2
-   - Mannequin area: show the correct mannequin image per activeView; apply blouseColor as a semi-transparent multiply overlay; if fabricPhoto show it as texture overlay; show embroidery image on top positioned for the view
-   - View switcher: 4 buttons at top of preview
-   - Design slider: horizontal scroll list of Firestore designs, tap to select
-   - Color controls: blouseColor swatch picker + embColor1 + embColor2
-   - Fabric upload: input[type=file accept=image/*] with capture attribute for camera option
-   - Bottom: Cancel + Add to Stitching
-3. Validate frontend build
+1. Fix BridalPage.tsx emoji encoding — replace escaped sequences with literal emoji characters
+2. Update VirtualTrialRoomPage.tsx to import and render BlouseMannequin instead of mannequin img tags, keeping all existing state and controls
+3. Update DesignCard action button label from "Add to Trial Room" to "Add to Stitching Order"
+4. Validate build
