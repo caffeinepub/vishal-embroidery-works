@@ -1,60 +1,46 @@
 import { useState } from "react";
 import { DesignCard } from "../components/DesignCard";
 import { useDesigns } from "../hooks/useFirestore";
-import type { Design, Subcategory } from "../lib/storage";
+import {
+  ALL_BLOUSE_TYPES,
+  BLOUSE_TYPE_LABELS,
+  type BlouseType,
+  type Design,
+} from "../lib/storage";
 
 interface BlousePageProps {
   onSelectDesign: (design: Design, designs: Design[], index: number) => void;
-  onAddToTrialRoom?: (design: Design) => void;
 }
 
-const subcategories: {
-  id: Subcategory;
-  label: string;
-  emoji: string;
-  desc: string;
-}[] = [
-  {
-    id: "simple-blouse",
-    label: "Simple Blouse",
-    emoji: "\ud83d\udc57",
-    desc: "Clean, elegant simple blouse designs",
-  },
-  {
-    id: "boat-neck",
-    label: "Boat Neck Blouse",
-    emoji: "\ud83c\udf0a",
-    desc: "Classic boat neck style blouses",
-  },
-  {
-    id: "bridal-blouse",
-    label: "Bridal Blouse",
-    emoji: "\ud83d\udc8d",
-    desc: "Exclusive bridal blouse collection",
-  },
-  {
-    id: "designer-blouse",
-    label: "Designer Blouse",
-    emoji: "\u2b50",
-    desc: "Premium designer blouse patterns",
-  },
-];
+const BLOUSE_TYPE_META: Record<
+  NonNullable<BlouseType>,
+  { emoji: string; desc: string }
+> = {
+  "boat-neck": { emoji: "🌊", desc: "Classic boat neck style blouses" },
+  "princess-cut": { emoji: "👸", desc: "Elegant princess cut blouses" },
+  "high-neck": { emoji: "⬆️", desc: "Sophisticated high neck blouses" },
+  "collar-neck": { emoji: "👔", desc: "Stylish collar neck blouses" },
+  "padded-blouse": { emoji: "✨", desc: "Comfortable padded blouses" },
+};
 
-export function BlousePage({
-  onSelectDesign,
-  onAddToTrialRoom,
-}: BlousePageProps) {
-  const [activeSubcategory, setActiveSubcategory] =
-    useState<Subcategory | null>(null);
+export function BlousePage({ onSelectDesign }: BlousePageProps) {
+  const [activeBlouseType, setActiveBlouseType] =
+    useState<NonNullable<BlouseType> | null>(null);
   const { data: allDesigns, loading } = useDesigns();
 
-  const handleCardTap = (subId: Subcategory) => {
-    setActiveSubcategory((prev) => (prev === subId ? null : subId));
+  const handleCardTap = (bt: NonNullable<BlouseType>) => {
+    setActiveBlouseType((prev) => (prev === bt ? null : bt));
   };
 
-  const galleryDesigns = activeSubcategory
+  // Filter by category=blouse and subcategory matching the blouseType
+  // Also supports legacy designs that used blouseType field
+  const galleryDesigns = activeBlouseType
     ? allDesigns.filter(
-        (d) => d.subcategory === activeSubcategory && !d.isHidden,
+        (d) =>
+          !d.isHidden &&
+          d.category === "blouse" &&
+          (d.subcategory === activeBlouseType ||
+            d.blouseType === activeBlouseType),
       )
     : [];
 
@@ -68,18 +54,22 @@ export function BlousePage({
       </div>
 
       <div className="px-4 grid grid-cols-2 gap-3">
-        {subcategories.map((sub) => {
+        {ALL_BLOUSE_TYPES.map((blouseType) => {
+          const meta = BLOUSE_TYPE_META[blouseType];
           const count = allDesigns.filter(
-            (d) => d.subcategory === sub.id && !d.isHidden,
+            (d) =>
+              !d.isHidden &&
+              d.category === "blouse" &&
+              (d.subcategory === blouseType || d.blouseType === blouseType),
           ).length;
-          const isActive = activeSubcategory === sub.id;
+          const isActive = activeBlouseType === blouseType;
 
           return (
             <button
               type="button"
-              key={sub.id}
-              data-ocid={`blouse.${sub.id}.card`}
-              onClick={() => handleCardTap(sub.id)}
+              key={blouseType}
+              data-ocid={`blouse.${blouseType}.card`}
+              onClick={() => handleCardTap(blouseType)}
               className={`rounded-2xl shadow-card p-4 text-left active:scale-[0.97] transition-all hover:shadow-card-hover ${
                 isActive
                   ? "bg-primary text-primary-foreground ring-2 ring-primary/30"
@@ -88,17 +78,17 @@ export function BlousePage({
             >
               <div
                 className={`w-12 h-12 rounded-xl flex items-center justify-center mb-3 ${
-                  isActive ? "bg-white/20" : "bg-accent/20"
+                  isActive ? "bg-white/20" : "bg-primary/10"
                 }`}
               >
-                <span className="text-2xl">{sub.emoji}</span>
+                <span className="text-2xl">{meta.emoji}</span>
               </div>
               <h3
                 className={`font-bold text-sm leading-tight ${
                   isActive ? "text-primary-foreground" : "text-foreground"
                 }`}
               >
-                {sub.label}
+                {BLOUSE_TYPE_LABELS[blouseType]} Blouse
               </h3>
               <p
                 className={`text-xs mt-1 line-clamp-2 ${
@@ -107,7 +97,7 @@ export function BlousePage({
                     : "text-muted-foreground"
                 }`}
               >
-                {sub.desc}
+                {meta.desc}
               </p>
               <div className="mt-2 flex items-center gap-1">
                 <span
@@ -132,11 +122,11 @@ export function BlousePage({
         })}
       </div>
 
-      {activeSubcategory && (
+      {activeBlouseType && (
         <div className="mt-4 px-4">
           <div className="flex items-center justify-between mb-3">
             <p className="text-sm font-semibold text-foreground">
-              {subcategories.find((s) => s.id === activeSubcategory)?.label}
+              {BLOUSE_TYPE_LABELS[activeBlouseType]} Blouse
             </p>
             <p className="text-xs text-muted-foreground">
               {galleryDesigns.length} designs
@@ -149,7 +139,7 @@ export function BlousePage({
                 <div
                   key={i}
                   className="rounded-xl bg-muted animate-pulse"
-                  style={{ paddingBottom: "100%" }}
+                  style={{ paddingBottom: "42.77%" }}
                 />
               ))}
             </div>
@@ -158,7 +148,7 @@ export function BlousePage({
               data-ocid="blouse.gallery.empty_state"
               className="text-center py-12 bg-muted/30 rounded-xl"
             >
-              <span className="text-4xl mb-2 block">\ud83d\udc57</span>
+              <span className="text-4xl mb-2 block">👗</span>
               <p className="text-sm text-muted-foreground">No designs yet</p>
             </div>
           ) : (
@@ -169,14 +159,6 @@ export function BlousePage({
                   design={design}
                   imageMode="wide-contain"
                   onClick={() => onSelectDesign(design, galleryDesigns, idx)}
-                  onViewDesign={() =>
-                    onSelectDesign(design, galleryDesigns, idx)
-                  }
-                  onAddToTrialRoom={
-                    onAddToTrialRoom
-                      ? () => onAddToTrialRoom(design)
-                      : undefined
-                  }
                 />
               ))}
             </div>

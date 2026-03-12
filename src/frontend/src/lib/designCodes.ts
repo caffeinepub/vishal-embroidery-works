@@ -3,19 +3,21 @@ import type { Design, Subcategory } from "./storage";
 const PREFIXES: Record<Subcategory, string> = {
   embroidery: "EMB",
   "ready-blouse-embroidery": "RBE",
-  "simple-blouse": "SIM",
   "boat-neck": "BN",
-  "bridal-blouse": "BRD",
-  "designer-blouse": "DSG",
+  "princess-cut": "PC",
+  "high-neck": "HN",
+  "collar-neck": "CN",
+  "padded-blouse": "PB",
 };
 
 export const SUBCATEGORY_LABELS: Record<Subcategory, string> = {
   embroidery: "Embroidery",
   "ready-blouse-embroidery": "Ready Blouse Embroidery",
-  "simple-blouse": "Simple Blouse",
   "boat-neck": "Boat Neck Blouse",
-  "bridal-blouse": "Bridal Blouse",
-  "designer-blouse": "Designer Blouse",
+  "princess-cut": "Princess Cut Blouse",
+  "high-neck": "High Neck Blouse",
+  "collar-neck": "Collar Neck Blouse",
+  "padded-blouse": "Padded Blouse",
 };
 
 export function generateDesignCode(

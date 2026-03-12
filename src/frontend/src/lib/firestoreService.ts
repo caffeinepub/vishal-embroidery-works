@@ -24,6 +24,17 @@ function sanitizeDesign(design: Design): Record<string, unknown> {
     tags: Array.isArray(design.tags) ? design.tags : [],
     price: design.price != null ? design.price : null,
     notes: typeof design.notes === "string" ? design.notes : "",
+    frontEmbroidery:
+      typeof design.frontEmbroidery === "string"
+        ? design.frontEmbroidery
+        : null,
+    backEmbroidery:
+      typeof design.backEmbroidery === "string" ? design.backEmbroidery : null,
+    sleeveEmbroidery:
+      typeof design.sleeveEmbroidery === "string"
+        ? design.sleeveEmbroidery
+        : null,
+    blouseType: design.blouseType ?? null,
   };
 }
 

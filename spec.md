@@ -1,26 +1,38 @@
 # Vishal Embroidery Works
 
 ## Current State
-- BridalPage.tsx has broken emoji rendering — raw unicode escape sequences (`\ud83d\udc51`) appear as literal text in JSX
-- VirtualTrialRoomPage.tsx references `/assets/generated/mannequin-*.png` image files that do not exist, so the mannequin preview is broken
-- BlouseMannequin.tsx is a working SVG component (supports front/back/left/right views, blouse color, neck shapes, sleeve lengths) but is NOT used in VirtualTrialRoomPage
-- DesignCard.tsx has "View Design" and "Add to Trial Room" action buttons
+The Virtual Trial Room exists with a 5-layer system but has several issues:
+- Blouse subcategories in admin/upload use old values (simple-blouse, bridal-blouse, designer-blouse)
+- A separate BlouseType selector exists in both admin panel and trial room UI
+- Right view may load the wrong mannequin image
+- Design gallery images could appear in trial room context
+- Blouse color zone positioning could be cleaner
+- Multiple embroidery overlays can stack (partially handled by React key)
 
 ## Requested Changes (Diff)
 
 ### Add
-- Nothing new
+- New blouse subcategory values: princess-cut, high-neck, collar-neck, padded-blouse
+- Design code prefixes for new subcategories (PC, HN, CN, PB)
+- Auto-derive blouseType from design subcategory in trial room
 
 ### Modify
-1. **BridalPage.tsx** — Replace all raw unicode escape sequences (`\ud83d\udc51`, `\ud83d\udca1`, `\u2728`) with actual emoji literals (👑, 💡, ✨) or remove emojis and use text/icons instead
-2. **VirtualTrialRoomPage.tsx** — Replace broken `<img>` mannequin images with the `BlouseMannequin` SVG component. Import and use `BlouseMannequin` for the preview section. Keep blouseColor state wired to the component. Wire view switcher (front/back/left/right) to the component's `view` prop. Use default neckShape="u-neck" and sleeveLength="short".
-3. **DesignCard.tsx** — Replace "Add to Trial Room" button label with "Add to Stitching" and wire it to the stitching order action (keep the same `onAddToTrialRoom` prop for now, just update the label). Actually — change the button to show "Add to Stitching Order" and keep the existing callback.
+- `storage.ts` Subcategory type: replace old blouse subcategories with 5 aligned values matching BlouseType
+- `designCodes.ts`: update PREFIXES and SUBCATEGORY_LABELS
+- `UploadDesign.tsx`: update CATEGORY_SUBCATEGORIES, remove BLOUSE TYPE selector
+- `AdminDesigns.tsx`: update CATEGORY_SUBCATEGORIES, remove BLOUSE TYPE selector
+- `BlousePage.tsx`: simplify filtering to use subcategory === blouseType directly
+- `VirtualTrialRoomPage.tsx`: remove blouse style selector, clean 5-layer rendering, fix view mapping, ensure correct embroidery field mapping
 
 ### Remove
-- Nothing to remove
+- `BLOUSE TYPE (for Trial Room)` section from admin upload form
+- `BLOUSE TYPE` section from admin design edit modal  
+- `SELECT BLOUSE STYLE` section from trial room controls
+- Old subcategories: simple-blouse, bridal-blouse, designer-blouse
 
 ## Implementation Plan
-1. Fix BridalPage.tsx emoji encoding — replace escaped sequences with literal emoji characters
-2. Update VirtualTrialRoomPage.tsx to import and render BlouseMannequin instead of mannequin img tags, keeping all existing state and controls
-3. Update DesignCard action button label from "Add to Trial Room" to "Add to Stitching Order"
-4. Validate build
+1. Update `storage.ts` Subcategory union type
+2. Update `designCodes.ts` PREFIXES and SUBCATEGORY_LABELS
+3. Update `CATEGORY_SUBCATEGORIES` in UploadDesign and AdminDesigns; remove BlouseType selectors
+4. Update `BlousePage.tsx` to filter by subcategory
+5. Rewrite VirtualTrialRoomPage: remove blouse style selector, 5-layer stack, correct view→mannequin mapping, correct embroidery field mapping, prevent gallery images from appearing as background

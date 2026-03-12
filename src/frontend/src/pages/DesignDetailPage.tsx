@@ -2,7 +2,6 @@ import {
   ChevronLeft,
   ChevronRight,
   FlaskConical,
-  GitCompare,
   Share2,
   ShoppingBag,
 } from "lucide-react";
@@ -17,16 +16,16 @@ interface DesignDetailPageProps {
   design: Design;
   designs: Design[];
   initialIndex: number;
-  onAddToTrialRoom?: (design: Design) => void;
+  onTryInTrialRoom?: (design: Design) => void;
 }
 
 export function DesignDetailPage({
   design,
   designs,
   initialIndex,
-  onAddToTrialRoom,
+  onTryInTrialRoom,
 }: DesignDetailPageProps) {
-  const { addToCart, cart, addToCompare, compareDesigns } = useAppStore();
+  const { addToCart, cart } = useAppStore();
 
   const [currentIndex, setCurrentIndex] = useState(
     designs.length > 0 ? initialIndex : 0,
@@ -34,7 +33,6 @@ export function DesignDetailPage({
   const currentDesign = designs.length > 0 ? designs[currentIndex] : design;
 
   const isInCart = cart.some((c) => c.designId === currentDesign.id);
-  const isInCompare = compareDesigns.some((d) => d.id === currentDesign.id);
 
   const pageSwipeTouchStartX = useRef(0);
   const pageSwipeTouchStartY = useRef(0);
@@ -85,7 +83,7 @@ export function DesignDetailPage({
   };
 
   const handleShare = async () => {
-    const text = `\u2728 Design: ${currentDesign.designCode}\n${currentDesign.title}\n\nVishal Embroidery Works`;
+    const text = `✨ Design: ${currentDesign.designCode}\n${currentDesign.title}\n\nVishal Embroidery Works`;
     if (navigator.share) {
       try {
         await navigator.share({ title: currentDesign.title, text });
@@ -102,22 +100,6 @@ export function DesignDetailPage({
     }
   };
 
-  const handleCompare = () => {
-    if (isInCompare) {
-      toast.info("Already in comparison");
-      return;
-    }
-    if (compareDesigns.length >= 2) {
-      toast.error(
-        "Only 2 designs can be compared at a time. Clear comparison first.",
-      );
-      return;
-    }
-    addToCompare(currentDesign);
-    toast.success(`${currentDesign.designCode} added to compare`);
-  };
-
-  const showCompareNow = compareDesigns.length === 2;
   const hasPrev = designs.length > 1 && currentIndex > 0;
   const hasNext = designs.length > 1 && currentIndex < designs.length - 1;
 
@@ -194,21 +176,22 @@ export function DesignDetailPage({
               )}
             </div>
             <p className="text-[10px] text-muted-foreground/60">
-              {designs.length > 1 ? "\u2190 Swipe to browse \u2192" : ""}
+              {designs.length > 1 ? "← Swipe to browse →" : ""}
             </p>
           </div>
         )}
 
+        {/* Design title and code */}
         <div className="px-4 pt-3 pb-2">
-          <div className="flex items-start justify-between gap-2">
+          <div className="flex items-start gap-2">
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap mb-1">
                 <span className="inline-flex items-center bg-primary/10 text-primary text-xs font-bold px-2.5 py-1 rounded-full tracking-wide">
                   {currentDesign.designCode}
                 </span>
                 {currentDesign.isBridal && (
-                  <span className="inline-flex items-center bg-accent/20 text-foreground text-xs font-bold px-2.5 py-1 rounded-full">
-                    \ud83d\udc51 Bridal
+                  <span className="inline-flex items-center bg-yellow-400/20 text-yellow-700 dark:text-yellow-400 text-xs font-bold px-2.5 py-1 rounded-full gap-1">
+                    👑 Bridal
                   </span>
                 )}
               </div>
@@ -222,7 +205,9 @@ export function DesignDetailPage({
           </div>
         </div>
 
+        {/* Action Buttons */}
         <div className="px-4 py-3 space-y-2.5">
+          {/* Primary: Add to Stitching Orders */}
           <button
             type="button"
             data-ocid="design.add_to_cart.button"
@@ -235,16 +220,16 @@ export function DesignDetailPage({
           >
             <ShoppingBag size={18} />
             {isInCart
-              ? "Added to Stitching Orders \u2713"
+              ? "Added to Stitching Orders ✓"
               : "Add to Stitching Orders"}
           </button>
 
-          {/* Add to Trial Room */}
-          {onAddToTrialRoom && (
+          {/* Secondary: Try in Virtual Trial Room */}
+          {onTryInTrialRoom && (
             <button
               type="button"
-              data-ocid="design.add_trial_room.button"
-              onClick={() => onAddToTrialRoom(currentDesign)}
+              data-ocid="design.try_trial_room.button"
+              onClick={() => onTryInTrialRoom(currentDesign)}
               className="w-full py-3.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 bg-card border-2 border-primary/30 text-primary hover:bg-primary/5 active:scale-[0.98] transition-all"
             >
               <FlaskConical size={18} />
@@ -252,77 +237,52 @@ export function DesignDetailPage({
             </button>
           )}
 
-          <div className="grid grid-cols-2 gap-2.5">
-            <button
-              type="button"
-              data-ocid="design.share.button"
-              onClick={handleShare}
-              className="py-3 rounded-xl bg-card border border-border text-foreground font-semibold text-sm flex items-center justify-center gap-2 active:bg-muted"
-            >
-              <Share2 size={16} />
-              Share
-            </button>
-            <button
-              type="button"
-              data-ocid="design.compare.button"
-              onClick={handleCompare}
-              className={`py-3 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 active:scale-[0.98] ${
-                isInCompare
-                  ? "bg-accent/20 text-foreground border border-accent/30"
-                  : "bg-card border border-border text-foreground"
-              }`}
-            >
-              <GitCompare size={16} />
-              {isInCompare ? "In Compare" : "Compare"}
-            </button>
-          </div>
-
-          {showCompareNow && (
-            <div className="bg-accent/10 border border-accent/30 rounded-xl p-3 flex items-center justify-between">
-              <p className="text-xs font-medium text-foreground">
-                2 designs ready to compare
-              </p>
-              <button
-                type="button"
-                data-ocid="design.compare_now.button"
-                className="text-xs font-bold text-primary bg-primary/10 px-2.5 py-1 rounded-lg"
-              >
-                Compare Now
-              </button>
-            </div>
-          )}
+          {/* Share */}
+          <button
+            type="button"
+            data-ocid="design.share.button"
+            onClick={handleShare}
+            className="w-full py-3 rounded-xl bg-card border border-border text-foreground font-semibold text-sm flex items-center justify-center gap-2 active:bg-muted"
+          >
+            <Share2 size={16} />
+            Share
+          </button>
         </div>
 
+        {/* Design Details Card */}
         <div className="px-4 pt-1 pb-6">
-          <div className="bg-card border border-border rounded-xl p-3">
-            <p className="text-xs font-semibold text-muted-foreground mb-2">
-              DESIGN DETAILS
+          <div className="bg-card border border-border rounded-xl p-4">
+            <p className="text-xs font-bold text-muted-foreground mb-3 tracking-widest uppercase">
+              Design Details
             </p>
-            <div className="space-y-1.5">
+            <div className="space-y-2.5">
               <div className="flex items-center justify-between">
-                <span className="text-xs text-muted-foreground">Code</span>
-                <span className="text-xs font-bold text-foreground">
+                <span className="text-sm text-muted-foreground">Code</span>
+                <span className="text-sm font-bold text-primary">
                   {currentDesign.designCode}
                 </span>
               </div>
+              <div className="h-px bg-border" />
               <div className="flex items-center justify-between">
-                <span className="text-xs text-muted-foreground">Category</span>
-                <span className="text-xs font-semibold text-foreground capitalize">
+                <span className="text-sm text-muted-foreground">Category</span>
+                <span className="text-sm font-semibold text-foreground capitalize">
                   {currentDesign.category}
                 </span>
               </div>
+              <div className="h-px bg-border" />
               <div className="flex items-center justify-between">
-                <span className="text-xs text-muted-foreground">Images</span>
-                <span className="text-xs font-semibold text-foreground">
+                <span className="text-sm text-muted-foreground">Images</span>
+                <span className="text-sm font-semibold text-foreground">
                   {currentDesign.images.filter(Boolean).length} photo
                   {currentDesign.images.filter(Boolean).length !== 1 ? "s" : ""}
                 </span>
               </div>
+              <div className="h-px bg-border" />
               <div className="flex items-center justify-between">
-                <span className="text-xs text-muted-foreground">Price</span>
-                <span className="text-xs font-bold text-foreground">
+                <span className="text-sm text-muted-foreground">Price</span>
+                <span className="text-sm font-bold text-foreground">
                   {currentDesign.price != null
-                    ? `\u20b9${currentDesign.price}`
+                    ? `₹${currentDesign.price}`
                     : "Ask in Shop"}
                 </span>
               </div>

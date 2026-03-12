@@ -1,4 +1,4 @@
-import { Search, Shirt } from "lucide-react";
+import { Search } from "lucide-react";
 import { useRef, useState } from "react";
 import { useDesigns } from "../hooks/useFirestore";
 import type { Design } from "../lib/storage";
@@ -7,7 +7,6 @@ import type { ActiveTab } from "../store/appStore";
 interface HomePageProps {
   onNavigate: (tab: ActiveTab) => void;
   onSelectDesign: (design: Design, designs: Design[], index: number) => void;
-  onOpenVirtualTrial: () => void;
 }
 
 const quickAccessCards = [
@@ -34,17 +33,12 @@ const quickAccessCards = [
   },
 ];
 
-export function HomePage({
-  onNavigate,
-  onSelectDesign,
-  onOpenVirtualTrial,
-}: HomePageProps) {
+export function HomePage({ onNavigate, onSelectDesign }: HomePageProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
   const { data: allDesigns, loading } = useDesigns();
 
-  // Search results — filter from all non-hidden designs
   const searchResults =
     searchQuery.trim().length > 0
       ? allDesigns
@@ -59,7 +53,6 @@ export function HomePage({
           .slice(0, 8)
       : [];
 
-  // Latest embroidery designs
   const latestEmbroidery = allDesigns
     .filter((d) => d.subcategory === "embroidery" && !d.isHidden)
     .sort(
@@ -72,14 +65,12 @@ export function HomePage({
     <div className="min-h-full">
       {/* Hero Banner */}
       <div className="vew-hero-gradient px-5 pt-6 pb-8 relative overflow-hidden">
-        {/* Decorative circles */}
         <div className="absolute top-0 right-0 w-48 h-48 opacity-10 pointer-events-none">
           <div className="w-full h-full rounded-full border-[40px] border-white/30" />
         </div>
         <div className="absolute -bottom-8 -left-8 w-32 h-32 opacity-10 pointer-events-none">
           <div className="w-full h-full rounded-full border-[20px] border-white/30" />
         </div>
-
         <div className="relative z-10">
           <p className="text-white/70 text-xs font-medium tracking-widest mb-1">
             Welcome to / ಸ್ವಾಗತ
@@ -103,7 +94,7 @@ export function HomePage({
           <input
             data-ocid="home.search_input"
             type="text"
-            placeholder="Search designs by code or name..."
+            placeholder="Search by code or name (EMB001, Floral...)"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             onFocus={() => setIsSearchFocused(true)}
@@ -111,7 +102,6 @@ export function HomePage({
             className="w-full pl-9 pr-4 py-3 rounded-2xl border border-border bg-card shadow-card text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
           />
 
-          {/* Search Dropdown */}
           {isSearchFocused && searchQuery.trim().length > 0 && (
             <div
               data-ocid="home.search.popover"
@@ -199,19 +189,6 @@ export function HomePage({
         </div>
       </div>
 
-      {/* Open Trial Room CTA */}
-      <div className="px-4 pb-4">
-        <button
-          type="button"
-          data-ocid="home.open_virtual_trial.button"
-          onClick={onOpenVirtualTrial}
-          className="w-full py-4 rounded-2xl bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold text-base shadow-lg active:scale-[0.98] transition-transform flex items-center justify-center gap-2"
-        >
-          <Shirt size={20} />
-          Open Trial Room
-        </button>
-      </div>
-
       {/* Latest Embroidery Designs */}
       <div className="px-4 pt-2 pb-5">
         <div className="flex items-center justify-between mb-3">
@@ -263,18 +240,17 @@ export function HomePage({
                 className="flex-shrink-0 w-28 text-left active:scale-[0.97] transition-transform"
               >
                 <div className="relative w-28 rounded-xl overflow-hidden bg-muted">
-                  {/* Wide ratio for embroidery */}
                   <div className="w-full" style={{ paddingBottom: "56.25%" }}>
                     <div className="absolute inset-0">
                       {design.images[0] ? (
                         <img
                           src={design.images[0]}
                           alt={design.title}
-                          className="w-full h-full object-contain bg-muted"
+                          className="w-full h-full object-contain bg-black"
                           loading="lazy"
                         />
                       ) : (
-                        <div className="w-full h-full flex items-center justify-center">
+                        <div className="w-full h-full flex items-center justify-center bg-muted">
                           <span className="text-2xl">🧵</span>
                         </div>
                       )}

@@ -5,15 +5,11 @@ import type { Design } from "../lib/storage";
 
 interface BridalPageProps {
   onSelectDesign: (design: Design, designs: Design[], index: number) => void;
-  onAddToTrialRoom?: (design: Design) => void;
 }
 
 type BridalFilter = "embroidery" | "blouse" | null;
 
-export function BridalPage({
-  onSelectDesign,
-  onAddToTrialRoom,
-}: BridalPageProps) {
+export function BridalPage({ onSelectDesign }: BridalPageProps) {
   const [activeFilter, setActiveFilter] = useState<BridalFilter>(null);
   const { data: allDesigns, loading } = useDesigns();
 
@@ -39,11 +35,12 @@ export function BridalPage({
       <div className="px-4 pt-4 pb-3">
         <h2 className="text-xl font-bold text-foreground">Bridal Collection</h2>
         <p className="text-xs text-muted-foreground mt-0.5">
-          Designs tagged as Bridal 👑
+          Exclusive bridal designs
         </p>
       </div>
 
       <div className="px-4 grid grid-cols-2 gap-3">
+        {/* Bridal Embroidery Card */}
         <button
           type="button"
           data-ocid="bridal.embroidery.card"
@@ -55,34 +52,53 @@ export function BridalPage({
           }`}
         >
           <div
-            className={`w-12 h-12 rounded-xl flex items-center justify-center mb-3 ${activeFilter === "embroidery" ? "bg-white/20" : "bg-primary/10"}`}
+            className={`w-12 h-12 rounded-xl flex items-center justify-center mb-3 ${
+              activeFilter === "embroidery" ? "bg-white/20" : "bg-primary/10"
+            }`}
           >
             <span className="text-2xl">✨</span>
           </div>
           <h3
-            className={`font-bold text-sm leading-tight ${activeFilter === "embroidery" ? "text-primary-foreground" : "text-foreground"}`}
+            className={`font-bold text-sm leading-tight ${
+              activeFilter === "embroidery"
+                ? "text-primary-foreground"
+                : "text-foreground"
+            }`}
           >
             Bridal Embroidery
           </h3>
           <p
-            className={`text-xs mt-1 ${activeFilter === "embroidery" ? "text-primary-foreground/70" : "text-muted-foreground"}`}
+            className={`text-xs mt-1 ${
+              activeFilter === "embroidery"
+                ? "text-primary-foreground/70"
+                : "text-muted-foreground"
+            }`}
           >
             Special bridal embroidery
           </p>
           <div className="mt-2 flex items-center gap-1">
             <span
-              className={`text-xs font-bold ${activeFilter === "embroidery" ? "text-primary-foreground" : "text-primary"}`}
+              className={`text-xs font-bold ${
+                activeFilter === "embroidery"
+                  ? "text-primary-foreground"
+                  : "text-primary"
+              }`}
             >
               {bridalEmbCount}
             </span>
             <span
-              className={`text-xs ${activeFilter === "embroidery" ? "text-primary-foreground/70" : "text-muted-foreground"}`}
+              className={`text-xs ${
+                activeFilter === "embroidery"
+                  ? "text-primary-foreground/70"
+                  : "text-muted-foreground"
+              }`}
             >
               designs
             </span>
           </div>
         </button>
 
+        {/* Bridal Blouse Card */}
         <button
           type="button"
           data-ocid="bridal.blouse.card"
@@ -94,42 +110,51 @@ export function BridalPage({
           }`}
         >
           <div
-            className={`w-12 h-12 rounded-xl flex items-center justify-center mb-3 ${activeFilter === "blouse" ? "bg-white/20" : "bg-accent/20"}`}
+            className={`w-12 h-12 rounded-xl flex items-center justify-center mb-3 ${
+              activeFilter === "blouse" ? "bg-white/20" : "bg-accent/20"
+            }`}
           >
             <span className="text-2xl">👑</span>
           </div>
           <h3
-            className={`font-bold text-sm leading-tight ${activeFilter === "blouse" ? "text-primary-foreground" : "text-foreground"}`}
+            className={`font-bold text-sm leading-tight ${
+              activeFilter === "blouse"
+                ? "text-primary-foreground"
+                : "text-foreground"
+            }`}
           >
             Bridal Blouse
           </h3>
           <p
-            className={`text-xs mt-1 ${activeFilter === "blouse" ? "text-primary-foreground/70" : "text-muted-foreground"}`}
+            className={`text-xs mt-1 ${
+              activeFilter === "blouse"
+                ? "text-primary-foreground/70"
+                : "text-muted-foreground"
+            }`}
           >
             Exclusive bridal blouses
           </p>
           <div className="mt-2 flex items-center gap-1">
             <span
-              className={`text-xs font-bold ${activeFilter === "blouse" ? "text-primary-foreground" : "text-primary"}`}
+              className={`text-xs font-bold ${
+                activeFilter === "blouse"
+                  ? "text-primary-foreground"
+                  : "text-primary"
+              }`}
             >
               {bridalBlouseCount}
             </span>
             <span
-              className={`text-xs ${activeFilter === "blouse" ? "text-primary-foreground/70" : "text-muted-foreground"}`}
+              className={`text-xs ${
+                activeFilter === "blouse"
+                  ? "text-primary-foreground/70"
+                  : "text-muted-foreground"
+              }`}
             >
               designs
             </span>
           </div>
         </button>
-      </div>
-
-      <div className="mx-4 mt-3 bg-primary/5 border border-primary/20 rounded-xl p-3">
-        <p className="text-xs text-foreground font-medium">
-          💡 About Bridal Collection
-        </p>
-        <p className="text-xs text-muted-foreground mt-1">
-          Designs tagged as "Bridal" during upload automatically appear here.
-        </p>
       </div>
 
       {activeFilter && (
@@ -171,14 +196,6 @@ export function BridalPage({
                   design={design}
                   imageMode="wide-contain"
                   onClick={() => onSelectDesign(design, galleryDesigns, idx)}
-                  onViewDesign={() =>
-                    onSelectDesign(design, galleryDesigns, idx)
-                  }
-                  onAddToTrialRoom={
-                    onAddToTrialRoom
-                      ? () => onAddToTrialRoom(design)
-                      : undefined
-                  }
                 />
               ))}
             </div>

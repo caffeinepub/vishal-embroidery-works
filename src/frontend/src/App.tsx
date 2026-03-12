@@ -1,32 +1,28 @@
 import { useCallback, useState } from "react";
 import { AdminPINScreen } from "./components/AdminPINScreen";
 import { BottomNav } from "./components/BottomNav";
-import { CompareModal } from "./components/CompareModal";
 import { SplashScreen } from "./components/SplashScreen";
 import { TopBar } from "./components/TopBar";
 import { AdminPanel } from "./components/admin/AdminPanel";
 import { Toaster } from "./components/ui/sonner";
 import { useDesigns } from "./hooks/useFirestore";
-import type { Design, TrialRoomItem } from "./lib/storage";
+import type { Design } from "./lib/storage";
 import { BlousePage } from "./pages/BlousePage";
 import { BridalPage } from "./pages/BridalPage";
 import { DesignDetailPage } from "./pages/DesignDetailPage";
 import { EmbroideryPage } from "./pages/EmbroideryPage";
 import { HomePage } from "./pages/HomePage";
 import { StitchingOrdersPage } from "./pages/StitchingOrdersPage";
-import { TrialRoomPage } from "./pages/TrialRoomPage";
 import { VirtualTrialRoomPage } from "./pages/VirtualTrialRoomPage";
 import { type ActiveTab, useAppStore } from "./store/appStore";
 
-// Page stack navigation
 type PageEntry =
   | { page: "home" }
   | { page: "embroidery" }
   | { page: "blouse" }
   | { page: "bridal" }
   | { page: "orders" }
-  | { page: "trial-room" }
-  | { page: "virtual-trial-room"; initialDesign?: Design }
+  | { page: "virtual-trial-room"; initialDesign: Design }
   | {
       page: "design-detail";
       design: Design;
@@ -35,11 +31,10 @@ type PageEntry =
     };
 
 export default function App() {
-  const { setActiveTab, isAdminOpen, isAdminAuthenticated, compareDesigns } =
-    useAppStore();
+  const { setActiveTab, isAdminOpen, isAdminAuthenticated } = useAppStore();
   const [pageStack, setPageStack] = useState<PageEntry[]>([{ page: "home" }]);
   const [showSplash, setShowSplash] = useState(true);
-  const { data: allDesigns } = useDesigns();
+  const { data: _allDesigns } = useDesigns();
 
   const currentPage = pageStack[pageStack.length - 1];
 
@@ -69,40 +64,13 @@ export default function App() {
     [navigate],
   );
 
-  const handleNavigateTrialRoom = useCallback(() => {
-    navigate({ page: "trial-room" });
-  }, [navigate]);
-
-  const handleOpenVirtualTrial = useCallback(
-    (initialDesign?: Design) => {
-      navigate({ page: "virtual-trial-room", initialDesign });
-    },
-    [navigate],
-  );
-
-  const handleAddToVirtualTrialRoom = useCallback(
+  const handleTryInTrialRoom = useCallback(
     (design: Design) => {
       navigate({ page: "virtual-trial-room", initialDesign: design });
     },
     [navigate],
   );
 
-  const handlePreviewTrialItem = useCallback(
-    (item: TrialRoomItem) => {
-      const design = allDesigns.find((d) => d.id === item.id);
-      if (design) {
-        navigate({
-          page: "design-detail",
-          design,
-          designs: allDesigns,
-          initialIndex: allDesigns.indexOf(design),
-        });
-      }
-    },
-    [allDesigns, navigate],
-  );
-
-  // Page title for TopBar
   const getPageTitle = (): string => {
     switch (currentPage.page) {
       case "home":
@@ -115,8 +83,6 @@ export default function App() {
         return "Bridal Collection";
       case "orders":
         return "Stitching Orders";
-      case "trial-room":
-        return "Trial Room";
       case "virtual-trial-room":
         return "Virtual Trial Room";
       case "design-detail":
@@ -135,7 +101,6 @@ export default function App() {
 
   const showBack = pageStack.length > 1;
 
-  // Render current page content
   const renderContent = () => {
     switch (currentPage.page) {
       case "home":
@@ -143,44 +108,25 @@ export default function App() {
           <HomePage
             onNavigate={handleTabChange}
             onSelectDesign={handleSelectDesign}
-            onOpenVirtualTrial={() => handleOpenVirtualTrial()}
           />
         );
 
       case "embroidery":
-        return (
-          <EmbroideryPage
-            onSelectDesign={handleSelectDesign}
-            onAddToTrialRoom={handleAddToVirtualTrialRoom}
-          />
-        );
+        return <EmbroideryPage onSelectDesign={handleSelectDesign} />;
 
       case "blouse":
-        return (
-          <BlousePage
-            onSelectDesign={handleSelectDesign}
-            onAddToTrialRoom={handleAddToVirtualTrialRoom}
-          />
-        );
+        return <BlousePage onSelectDesign={handleSelectDesign} />;
 
       case "bridal":
-        return (
-          <BridalPage
-            onSelectDesign={handleSelectDesign}
-            onAddToTrialRoom={handleAddToVirtualTrialRoom}
-          />
-        );
+        return <BridalPage onSelectDesign={handleSelectDesign} />;
 
       case "orders":
         return <StitchingOrdersPage />;
 
-      case "trial-room":
-        return <TrialRoomPage onPreviewDesign={handlePreviewTrialItem} />;
-
       case "virtual-trial-room": {
         const p = currentPage as {
           page: "virtual-trial-room";
-          initialDesign?: Design;
+          initialDesign: Design;
         };
         return (
           <VirtualTrialRoomPage
@@ -202,7 +148,7 @@ export default function App() {
             design={p.design}
             designs={p.designs}
             initialIndex={p.initialIndex}
-            onAddToTrialRoom={handleAddToVirtualTrialRoom}
+            onTryInTrialRoom={handleTryInTrialRoom}
           />
         );
       }
@@ -212,7 +158,6 @@ export default function App() {
           <HomePage
             onNavigate={handleTabChange}
             onSelectDesign={handleSelectDesign}
-            onOpenVirtualTrial={() => handleOpenVirtualTrial()}
           />
         );
     }
@@ -220,18 +165,10 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Splash Screen */}
       {showSplash && <SplashScreen onDone={() => setShowSplash(false)} />}
 
-      {/* Top Bar */}
-      <TopBar
-        title={getPageTitle()}
-        showBack={showBack}
-        onBack={goBack}
-        onNavigateTrialRoom={handleNavigateTrialRoom}
-      />
+      <TopBar title={getPageTitle()} showBack={showBack} onBack={goBack} />
 
-      {/* Main Content */}
       <main
         className="overflow-auto"
         style={{
@@ -243,19 +180,11 @@ export default function App() {
         {renderContent()}
       </main>
 
-      {/* Bottom Nav */}
       <BottomNav onTabChange={handleTabChange} />
 
-      {/* Admin PIN Screen */}
       {isAdminOpen && !isAdminAuthenticated && <AdminPINScreen />}
-
-      {/* Admin Panel */}
       {isAdminOpen && isAdminAuthenticated && <AdminPanel />}
 
-      {/* Compare Modal */}
-      {compareDesigns.length === 2 && <CompareModal />}
-
-      {/* Toast notifications */}
       <Toaster position="top-center" richColors />
     </div>
   );

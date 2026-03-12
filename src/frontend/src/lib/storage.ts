@@ -2,10 +2,11 @@
 export type Subcategory =
   | "embroidery"
   | "ready-blouse-embroidery"
-  | "simple-blouse"
   | "boat-neck"
-  | "bridal-blouse"
-  | "designer-blouse";
+  | "princess-cut"
+  | "high-neck"
+  | "collar-neck"
+  | "padded-blouse";
 
 export type Category = "embroidery" | "blouse";
 export type OrderStatus =
@@ -16,19 +17,48 @@ export type OrderStatus =
   | "Completed";
 export type PaymentStatus = "Pending" | "Partial" | "Paid";
 
+// BlouseType aligns exactly with blouse Subcategory values
+export type BlouseType =
+  | "boat-neck"
+  | "princess-cut"
+  | "high-neck"
+  | "collar-neck"
+  | "padded-blouse"
+  | null;
+
+export const BLOUSE_TYPE_LABELS: Record<NonNullable<BlouseType>, string> = {
+  "boat-neck": "Boat Neck",
+  "princess-cut": "Princess Cut",
+  "high-neck": "High Neck",
+  "collar-neck": "Collar Neck",
+  "padded-blouse": "Padded Blouse",
+};
+
+export const ALL_BLOUSE_TYPES: NonNullable<BlouseType>[] = [
+  "boat-neck",
+  "princess-cut",
+  "high-neck",
+  "collar-neck",
+  "padded-blouse",
+];
+
 export interface Design {
   id: string;
   designCode: string;
   title: string;
-  images: string[]; // Cloudinary URLs (max 5)
+  images: string[]; // Cloudinary URLs (max 10)
   category: Category;
   subcategory: Subcategory;
   isBridal: boolean;
   isHidden: boolean;
   createdAt: string;
-  tags: string[]; // array of tag strings
-  price?: number | null; // optional price in ₹
-  notes?: string; // optional admin notes
+  tags: string[];
+  price?: number | null;
+  notes?: string;
+  frontEmbroidery?: string | null;
+  backEmbroidery?: string | null;
+  sleeveEmbroidery?: string | null;
+  blouseType?: BlouseType; // kept for backward compat; new designs derive from subcategory
 }
 
 export interface Measurements {
@@ -58,7 +88,7 @@ export interface OrderDesign {
   designImage: string;
   isManual: boolean;
   manualDescription?: string;
-  referenceImage?: string; // optional Cloudinary URL for manual order reference
+  referenceImage?: string;
 }
 
 export interface Order {
@@ -90,24 +120,22 @@ export interface CartItem {
   designCode: string;
   designTitle: string;
   designImage: string;
-  // Virtual Trial Room configuration
   view?: "front" | "back";
   neckType?: string;
   blouseColor?: string;
   embColor1?: string;
   embColor2?: string;
-  uploadedBlousePhoto?: string; // base64 data URL
+  uploadedBlousePhoto?: string;
 }
 
 export interface TrialRoomItem {
-  id: string; // same as design.id
+  id: string;
   designCode: string;
   imageURL: string;
   category: string;
-  addedAt: string; // ISO timestamp
+  addedAt: string;
 }
 
-// ─── Cart (session-only, kept in localStorage intentionally) ─────────────────
 const CART_KEY = "VEW_STITCHING_CART";
 
 function safeGet<T>(key: string): T[] {
@@ -138,7 +166,6 @@ export function clearCart(): void {
   safeSet(CART_KEY, []);
 }
 
-// ─── Trial Room (session storage) ───────────────────────────────────────────
 const TRIAL_ROOM_KEY = "VEW_TRIAL_ROOM";
 export const TRIAL_ROOM_LIMIT = 10;
 
@@ -150,7 +177,6 @@ export function saveTrialRoom(items: TrialRoomItem[]): void {
   safeSet(TRIAL_ROOM_KEY, items);
 }
 
-// ─── Utilities ───────────────────────────────────────────────────────────────
 export function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }

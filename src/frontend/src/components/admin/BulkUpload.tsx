@@ -9,16 +9,23 @@ import { type Category, type Subcategory, generateId } from "../../lib/storage";
 
 const CATEGORY_SUBCATEGORIES: Record<Category, Subcategory[]> = {
   embroidery: ["embroidery", "ready-blouse-embroidery"],
-  blouse: ["simple-blouse", "boat-neck", "bridal-blouse", "designer-blouse"],
+  blouse: [
+    "boat-neck",
+    "princess-cut",
+    "high-neck",
+    "collar-neck",
+    "padded-blouse",
+  ],
 };
 
 const PREFIXES: Record<Subcategory, string> = {
   embroidery: "EMB",
   "ready-blouse-embroidery": "RBE",
-  "simple-blouse": "SIM",
   "boat-neck": "BN",
-  "bridal-blouse": "BRD",
-  "designer-blouse": "DSG",
+  "princess-cut": "PC",
+  "high-neck": "HN",
+  "collar-neck": "CN",
+  "padded-blouse": "PB",
 };
 
 const PRESET_TAGS = [

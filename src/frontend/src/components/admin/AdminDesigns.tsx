@@ -13,7 +13,13 @@ import type { Category, Design, Subcategory } from "../../lib/storage";
 
 const CATEGORY_SUBCATEGORIES: Record<Category, Subcategory[]> = {
   embroidery: ["embroidery", "ready-blouse-embroidery"],
-  blouse: ["simple-blouse", "boat-neck", "bridal-blouse", "designer-blouse"],
+  blouse: [
+    "boat-neck",
+    "princess-cut",
+    "high-neck",
+    "collar-neck",
+    "padded-blouse",
+  ],
 };
 
 const PRESET_TAGS = [
@@ -24,6 +30,8 @@ const PRESET_TAGS = [
   "daily wear",
   "party wear",
 ];
+
+const MAX_IMAGES = 10;
 
 export function AdminDesigns() {
   const { data: designs, loading } = useDesigns();
@@ -59,7 +67,13 @@ export function AdminDesigns() {
     setEditCode(design.designCode);
     setEditTitle(design.title);
     setEditCategory(design.category);
-    setEditSubcategory(design.subcategory);
+    // Safely coerce subcategory – old values (simple-blouse etc.) fall back to first option
+    const validSubs = CATEGORY_SUBCATEGORIES[design.category];
+    setEditSubcategory(
+      validSubs.includes(design.subcategory as Subcategory)
+        ? (design.subcategory as Subcategory)
+        : validSubs[0],
+    );
     setEditImages(design.images);
     setEditBridal(design.isBridal);
     setEditTags(design.tags || []);
@@ -121,10 +135,7 @@ export function AdminDesigns() {
     try {
       const oldCode = design.designCode;
       const newCode = editCode.trim().toUpperCase();
-
-      if (oldCode !== newCode) {
-        await updateOrderDesignCode(oldCode, newCode);
-      }
+      if (oldCode !== newCode) await updateOrderDesignCode(oldCode, newCode);
 
       await updateDesign({
         ...design,
@@ -137,6 +148,7 @@ export function AdminDesigns() {
         tags: editTags,
         price: editPrice ? Number.parseFloat(editPrice) : null,
         notes: editNotes.trim() || "",
+        blouseType: null, // blouse type derived from subcategory going forward
       });
 
       setEditingId(null);
@@ -169,15 +181,15 @@ export function AdminDesigns() {
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
-    if (editImages.length + files.length > 5) {
-      toast.error("Maximum 5 images");
+    if (editImages.length + files.length > MAX_IMAGES) {
+      toast.error(`Maximum ${MAX_IMAGES} images`);
       return;
     }
     e.target.value = "";
     try {
       toast.info("Uploading image...");
       const newUrls = await Promise.all(
-        files.slice(0, 5 - editImages.length).map(uploadToCloudinary),
+        files.slice(0, MAX_IMAGES - editImages.length).map(uploadToCloudinary),
       );
       setEditImages((prev) => [...prev, ...newUrls]);
       toast.success("Image uploaded");
@@ -237,9 +249,10 @@ export function AdminDesigns() {
             <div
               key={design.id}
               data-ocid={`admin.designs.item.${idx + 1}`}
-              className={`bg-card rounded-xl shadow-card overflow-hidden ${design.isHidden ? "opacity-50" : ""}`}
+              className={`bg-card rounded-xl shadow-card overflow-hidden ${
+                design.isHidden ? "opacity-50" : ""
+              }`}
             >
-              {/* Thumbnail */}
               <div
                 className="relative w-full"
                 style={{ paddingBottom: "100%" }}
@@ -250,6 +263,7 @@ export function AdminDesigns() {
                       src={design.images[0]}
                       alt={design.title}
                       className="w-full h-full object-cover"
+                      loading="lazy"
                     />
                   ) : (
                     <div className="w-full h-full bg-muted flex items-center justify-center">
@@ -277,13 +291,12 @@ export function AdminDesigns() {
                   {design.title}
                 </p>
                 <p className="text-[10px] text-muted-foreground">
-                  {SUBCATEGORY_LABELS[design.subcategory]}
+                  {SUBCATEGORY_LABELS[design.subcategory as Subcategory] ??
+                    design.subcategory}
                 </p>
-                {/* Price badge */}
                 <p className="text-[10px] text-primary font-semibold mt-0.5">
                   {design.price != null ? `₹${design.price}` : "Ask in Shop"}
                 </p>
-                {/* Tags preview */}
                 {design.tags && design.tags.length > 0 && (
                   <div className="flex flex-wrap gap-1 mt-1">
                     {design.tags.slice(0, 2).map((tag) => (
@@ -302,7 +315,6 @@ export function AdminDesigns() {
                   </div>
                 )}
 
-                {/* Actions */}
                 <div className="flex gap-1 mt-2">
                   <button
                     type="button"
@@ -439,7 +451,7 @@ export function AdminDesigns() {
             {/* Images */}
             <div>
               <p className="text-xs font-semibold text-muted-foreground block mb-1.5">
-                IMAGES ({editImages.length}/5)
+                IMAGES ({editImages.length}/{MAX_IMAGES})
               </p>
               <div className="flex gap-2 flex-wrap mb-2">
                 {editImages.map((img, i) => (
@@ -448,6 +460,7 @@ export function AdminDesigns() {
                       src={img}
                       className="w-full h-full object-cover rounded-lg"
                       alt=""
+                      loading="lazy"
                     />
                     <button
                       type="button"
@@ -460,7 +473,7 @@ export function AdminDesigns() {
                     </button>
                   </div>
                 ))}
-                {editImages.length < 5 && (
+                {editImages.length < MAX_IMAGES && (
                   <label className="w-14 h-14 border-2 border-dashed border-border rounded-lg flex items-center justify-center cursor-pointer">
                     <span className="text-lg text-muted-foreground">+</span>
                     <input
@@ -557,10 +570,14 @@ export function AdminDesigns() {
                 type="button"
                 data-ocid="admin.edit_design.bridal.toggle"
                 onClick={() => setEditBridal((b) => !b)}
-                className={`w-11 h-6 rounded-full transition-colors relative ${editBridal ? "bg-primary" : "bg-muted"}`}
+                className={`w-11 h-6 rounded-full transition-colors relative ${
+                  editBridal ? "bg-primary" : "bg-muted"
+                }`}
               >
                 <span
-                  className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${editBridal ? "translate-x-5" : "translate-x-0.5"}`}
+                  className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${
+                    editBridal ? "translate-x-5" : "translate-x-0.5"
+                  }`}
                 />
               </button>
             </div>

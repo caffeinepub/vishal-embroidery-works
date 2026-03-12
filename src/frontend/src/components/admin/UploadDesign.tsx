@@ -3,13 +3,20 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { useDesigns } from "../../hooks/useFirestore";
 import { SUBCATEGORY_LABELS, generateDesignCode } from "../../lib/designCodes";
+import { classifyEmbroideryImage } from "../../lib/embroideryClassifier";
 import { addDesign } from "../../lib/firestoreService";
 import { uploadToCloudinary } from "../../lib/imageUtils";
 import { type Category, type Subcategory, generateId } from "../../lib/storage";
 
 const CATEGORY_SUBCATEGORIES: Record<Category, Subcategory[]> = {
   embroidery: ["embroidery", "ready-blouse-embroidery"],
-  blouse: ["simple-blouse", "boat-neck", "bridal-blouse", "designer-blouse"],
+  blouse: [
+    "boat-neck",
+    "princess-cut",
+    "high-neck",
+    "collar-neck",
+    "padded-blouse",
+  ],
 };
 
 const PRESET_TAGS = [
@@ -21,11 +28,15 @@ const PRESET_TAGS = [
   "party wear",
 ];
 
+const MAX_IMAGES = 10;
+
 function getHelperText(sub: Subcategory): string {
   if (sub === "embroidery")
     return "Recommended: Wide embroidery design up to 1536 × 657 px";
   return "Recommended: Wide design image up to 1536 × 657 px";
 }
+
+type ImageRole = "design" | "front" | "back" | "sleeve";
 
 type UploadStatus =
   | { phase: "idle" }
@@ -45,6 +56,7 @@ export function UploadDesign({ onSaved }: { onSaved: () => void }) {
   const [price, setPrice] = useState("");
   const [notes, setNotes] = useState("");
   const [status, setStatus] = useState<UploadStatus>({ phase: "idle" });
+  const [imageRoles, setImageRoles] = useState<Record<number, ImageRole>>({});
 
   const { data: designs } = useDesigns();
 
@@ -58,12 +70,12 @@ export function UploadDesign({ onSaved }: { onSaved: () => void }) {
 
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
-    if (previews.length + files.length > 5) {
-      toast.error("Maximum 5 images allowed");
+    if (previews.length + files.length > MAX_IMAGES) {
+      toast.error(`Maximum ${MAX_IMAGES} images allowed`);
       e.target.value = "";
       return;
     }
-    const sliced = files.slice(0, 5 - previews.length);
+    const sliced = files.slice(0, MAX_IMAGES - previews.length);
     const newPreviews = sliced.map((f) => URL.createObjectURL(f));
     setPreviews((prev) => [...prev, ...newPreviews]);
     setPendingFiles((prev) => [...prev, ...sliced]);
@@ -77,6 +89,19 @@ export function UploadDesign({ onSaved }: { onSaved: () => void }) {
       return updated;
     });
     setPendingFiles((prev) => prev.filter((_, i) => i !== idx));
+    setImageRoles((prev) => {
+      const next: Record<number, ImageRole> = {};
+      for (const [key, val] of Object.entries(prev)) {
+        const k = Number(key);
+        if (k < idx) next[k] = val;
+        else if (k > idx) next[k - 1] = val;
+      }
+      return next;
+    });
+  };
+
+  const setRole = (idx: number, role: ImageRole) => {
+    setImageRoles((prev) => ({ ...prev, [idx]: role }));
   };
 
   const togglePresetTag = (tag: string) => {
@@ -129,6 +154,23 @@ export function UploadDesign({ onSaved }: { onSaved: () => void }) {
         setStatus({ phase: "uploading", done: i + 1, total });
       }
 
+      const classified: Record<string, string> = {};
+      for (let i = 0; i < pendingFiles.length; i++) {
+        const type = await classifyEmbroideryImage(pendingFiles[i]);
+        classified[type] = imageUrls[i];
+      }
+
+      let frontEmb: string | null = classified.frontEmbroidery || null;
+      let backEmb: string | null = classified.backEmbroidery || null;
+      let sleeveEmb: string | null = classified.sleeveEmbroidery || null;
+
+      for (let i = 0; i < imageUrls.length; i++) {
+        const role = imageRoles[i];
+        if (role === "front") frontEmb = imageUrls[i];
+        else if (role === "back") backEmb = imageUrls[i];
+        else if (role === "sleeve") sleeveEmb = imageUrls[i];
+      }
+
       setStatus({ phase: "saving" });
       const code = generateDesignCode(subcategory, designs);
       await addDesign({
@@ -144,6 +186,10 @@ export function UploadDesign({ onSaved }: { onSaved: () => void }) {
         tags,
         price: price ? Number.parseFloat(price) : null,
         notes: notes.trim() || "",
+        frontEmbroidery: frontEmb,
+        backEmbroidery: backEmb,
+        sleeveEmbroidery: sleeveEmb,
+        blouseType: null,
       });
 
       setStatus({ phase: "success" });
@@ -158,6 +204,7 @@ export function UploadDesign({ onSaved }: { onSaved: () => void }) {
         setTagInput("");
         setPrice("");
         setNotes("");
+        setImageRoles({});
         setStatus({ phase: "idle" });
       }, 2000);
     } catch {
@@ -165,6 +212,13 @@ export function UploadDesign({ onSaved }: { onSaved: () => void }) {
       setStatus({ phase: "idle" });
     }
   };
+
+  const ROLE_OPTIONS: { role: ImageRole; label: string }[] = [
+    { role: "design", label: "Design" },
+    { role: "front", label: "Front" },
+    { role: "back", label: "Back" },
+    { role: "sleeve", label: "Sleeve" },
+  ];
 
   return (
     <div className="p-4 space-y-4">
@@ -240,40 +294,66 @@ export function UploadDesign({ onSaved }: { onSaved: () => void }) {
       {/* Images */}
       <div>
         <p className="text-xs font-semibold text-muted-foreground block mb-1.5">
-          IMAGES ({previews.length}/5)
+          IMAGES ({previews.length}/{MAX_IMAGES})
         </p>
         <p
           data-ocid="upload.helper_text.panel"
           className="text-[11px] text-muted-foreground mb-2"
         >
-          Max 5 images. {getHelperText(subcategory)}
+          Max {MAX_IMAGES} images. {getHelperText(subcategory)}
+        </p>
+        <p className="text-[11px] text-primary/80 font-medium mb-2">
+          Tag each image role: Front / Back / Sleeve for correct Trial Room
+          mapping
         </p>
 
         {previews.length > 0 && (
           <div className="flex gap-2 flex-wrap mb-2">
-            {previews.map((preview, idx) => (
-              <div key={preview} className="relative w-16 h-16">
-                <img
-                  src={preview}
-                  alt={`Preview ${idx + 1}`}
-                  className="w-full h-full object-contain rounded-lg bg-muted"
-                />
-                {!isLoading && (
-                  <button
-                    type="button"
-                    onClick={() => removeImage(idx)}
-                    data-ocid={`upload.remove_image.button.${idx + 1}`}
-                    className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-destructive text-white rounded-full flex items-center justify-center text-xs"
-                  >
-                    <X size={10} />
-                  </button>
-                )}
-              </div>
-            ))}
+            {previews.map((preview, idx) => {
+              const currentRole: ImageRole = imageRoles[idx] ?? "design";
+              return (
+                <div key={preview} className="flex flex-col items-center gap-1">
+                  <div className="relative w-16 h-16">
+                    <img
+                      src={preview}
+                      alt={`Preview ${idx + 1}`}
+                      className="w-full h-full object-contain rounded-lg bg-muted"
+                    />
+                    {!isLoading && (
+                      <button
+                        type="button"
+                        onClick={() => removeImage(idx)}
+                        data-ocid={`upload.remove_image.button.${idx + 1}`}
+                        className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-destructive text-white rounded-full flex items-center justify-center text-xs"
+                      >
+                        <X size={10} />
+                      </button>
+                    )}
+                  </div>
+                  <div className="flex gap-0.5">
+                    {ROLE_OPTIONS.map(({ role, label }) => (
+                      <button
+                        key={role}
+                        type="button"
+                        disabled={isLoading}
+                        onClick={() => setRole(idx, role)}
+                        className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold transition-colors ${
+                          currentRole === role
+                            ? "bg-primary text-primary-foreground"
+                            : "bg-muted text-muted-foreground"
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
 
-        {previews.length < 5 && !isLoading && (
+        {previews.length < MAX_IMAGES && !isLoading && (
           <label
             data-ocid="upload.image.upload_button"
             className="flex flex-col items-center justify-center gap-2 w-full h-20 border-2 border-dashed border-border rounded-xl cursor-pointer hover:border-primary/50 hover:bg-primary/5 transition-colors"
@@ -318,7 +398,6 @@ export function UploadDesign({ onSaved }: { onSaved: () => void }) {
         <p className="text-xs font-semibold text-muted-foreground block mb-1.5">
           TAGS
         </p>
-        {/* Preset tag chips */}
         <div className="flex flex-wrap gap-1.5 mb-2">
           {PRESET_TAGS.map((tag) => (
             <button
@@ -337,7 +416,6 @@ export function UploadDesign({ onSaved }: { onSaved: () => void }) {
             </button>
           ))}
         </div>
-        {/* Custom tag input */}
         <input
           data-ocid="upload.tag_input.input"
           type="text"
@@ -348,7 +426,6 @@ export function UploadDesign({ onSaved }: { onSaved: () => void }) {
           disabled={isLoading}
           className="w-full px-3 py-2 rounded-xl border border-border bg-card text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
         />
-        {/* Selected custom tags (non-preset) */}
         {tags.filter((t) => !PRESET_TAGS.includes(t)).length > 0 && (
           <div className="flex flex-wrap gap-1.5 mt-2">
             {tags
@@ -453,7 +530,6 @@ export function UploadDesign({ onSaved }: { onSaved: () => void }) {
         </div>
       )}
 
-      {/* Success */}
       {status.phase === "success" && (
         <div
           data-ocid="upload.success_state"
@@ -469,7 +545,6 @@ export function UploadDesign({ onSaved }: { onSaved: () => void }) {
         </div>
       )}
 
-      {/* Save button */}
       <button
         type="button"
         data-ocid="upload.save.button"
