@@ -1,10 +1,4 @@
-import {
-  ChevronLeft,
-  ChevronRight,
-  FlaskConical,
-  Share2,
-  ShoppingBag,
-} from "lucide-react";
+import { ChevronLeft, ChevronRight, Share2, ShoppingBag } from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { ImageSlider } from "../components/ImageSlider";
@@ -16,14 +10,12 @@ interface DesignDetailPageProps {
   design: Design;
   designs: Design[];
   initialIndex: number;
-  onTryInTrialRoom?: (design: Design) => void;
 }
 
 export function DesignDetailPage({
   design,
   designs,
   initialIndex,
-  onTryInTrialRoom,
 }: DesignDetailPageProps) {
   const { addToCart, cart } = useAppStore();
 
@@ -223,19 +215,6 @@ export function DesignDetailPage({
               ? "Added to Stitching Orders ✓"
               : "Add to Stitching Orders"}
           </button>
-
-          {/* Secondary: Try in Virtual Trial Room */}
-          {onTryInTrialRoom && (
-            <button
-              type="button"
-              data-ocid="design.try_trial_room.button"
-              onClick={() => onTryInTrialRoom(currentDesign)}
-              className="w-full py-3.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 bg-card border-2 border-primary/30 text-primary hover:bg-primary/5 active:scale-[0.98] transition-all"
-            >
-              <FlaskConical size={18} />
-              Try in Virtual Trial Room
-            </button>
-          )}
 
           {/* Share */}
           <button

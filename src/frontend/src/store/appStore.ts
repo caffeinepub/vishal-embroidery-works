@@ -1,12 +1,9 @@
 import { create } from "zustand";
-import type { CartItem, Design, TrialRoomItem } from "../lib/storage";
+import type { CartItem, Design } from "../lib/storage";
 import {
-  TRIAL_ROOM_LIMIT,
   clearCart as clearCartStorage,
   getCart,
-  getTrialRoom,
   saveCart,
-  saveTrialRoom,
 } from "../lib/storage";
 
 export type ActiveTab = "home" | "embroidery" | "blouse" | "bridal" | "orders";
@@ -17,7 +14,6 @@ interface AppStore {
   isAdminOpen: boolean;
   isAdminAuthenticated: boolean;
   compareDesigns: Design[];
-  trialRoom: TrialRoomItem[];
 
   setActiveTab: (tab: ActiveTab) => void;
   addToCart: (item: CartItem) => void;
@@ -31,18 +27,14 @@ interface AppStore {
   removeFromCompare: (designId: string) => void;
   clearCompare: () => void;
   refreshCart: () => void;
-  addToTrialRoom: (item: TrialRoomItem) => "added" | "duplicate" | "limit";
-  removeFromTrialRoom: (id: string) => void;
-  clearTrialRoom: () => void;
 }
 
-export const useAppStore = create<AppStore>((set, get) => ({
+export const useAppStore = create<AppStore>((set) => ({
   activeTab: "home",
   cart: getCart(),
   isAdminOpen: false,
   isAdminAuthenticated: false,
   compareDesigns: [],
-  trialRoom: getTrialRoom(),
 
   setActiveTab: (tab) => set({ activeTab: tab }),
 
@@ -86,26 +78,4 @@ export const useAppStore = create<AppStore>((set, get) => ({
   clearCompare: () => set({ compareDesigns: [] }),
 
   refreshCart: () => set({ cart: getCart() }),
-
-  addToTrialRoom: (item) => {
-    const state = get();
-    if (state.trialRoom.some((t) => t.id === item.id)) return "duplicate";
-    if (state.trialRoom.length >= TRIAL_ROOM_LIMIT) return "limit";
-    const updated = [...state.trialRoom, item];
-    saveTrialRoom(updated);
-    set({ trialRoom: updated });
-    return "added";
-  },
-
-  removeFromTrialRoom: (id) =>
-    set((state) => {
-      const updated = state.trialRoom.filter((t) => t.id !== id);
-      saveTrialRoom(updated);
-      return { trialRoom: updated };
-    }),
-
-  clearTrialRoom: () => {
-    saveTrialRoom([]);
-    set({ trialRoom: [] });
-  },
 }));

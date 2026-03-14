@@ -67,7 +67,6 @@ export function AdminDesigns() {
     setEditCode(design.designCode);
     setEditTitle(design.title);
     setEditCategory(design.category);
-    // Safely coerce subcategory – old values (simple-blouse etc.) fall back to first option
     const validSubs = CATEGORY_SUBCATEGORIES[design.category];
     setEditSubcategory(
       validSubs.includes(design.subcategory as Subcategory)
@@ -148,7 +147,6 @@ export function AdminDesigns() {
         tags: editTags,
         price: editPrice ? Number.parseFloat(editPrice) : null,
         notes: editNotes.trim() || "",
-        blouseType: null, // blouse type derived from subcategory going forward
       });
 
       setEditingId(null);

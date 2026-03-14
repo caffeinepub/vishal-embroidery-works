@@ -13,7 +13,6 @@ import { DesignDetailPage } from "./pages/DesignDetailPage";
 import { EmbroideryPage } from "./pages/EmbroideryPage";
 import { HomePage } from "./pages/HomePage";
 import { StitchingOrdersPage } from "./pages/StitchingOrdersPage";
-import { VirtualTrialRoomPage } from "./pages/VirtualTrialRoomPage";
 import { type ActiveTab, useAppStore } from "./store/appStore";
 
 type PageEntry =
@@ -22,7 +21,6 @@ type PageEntry =
   | { page: "blouse" }
   | { page: "bridal" }
   | { page: "orders" }
-  | { page: "virtual-trial-room"; initialDesign: Design }
   | {
       page: "design-detail";
       design: Design;
@@ -64,13 +62,6 @@ export default function App() {
     [navigate],
   );
 
-  const handleTryInTrialRoom = useCallback(
-    (design: Design) => {
-      navigate({ page: "virtual-trial-room", initialDesign: design });
-    },
-    [navigate],
-  );
-
   const getPageTitle = (): string => {
     switch (currentPage.page) {
       case "home":
@@ -83,8 +74,6 @@ export default function App() {
         return "Bridal Collection";
       case "orders":
         return "Stitching Orders";
-      case "virtual-trial-room":
-        return "Virtual Trial Room";
       case "design-detail":
         return (
           currentPage as {
@@ -123,19 +112,6 @@ export default function App() {
       case "orders":
         return <StitchingOrdersPage />;
 
-      case "virtual-trial-room": {
-        const p = currentPage as {
-          page: "virtual-trial-room";
-          initialDesign: Design;
-        };
-        return (
-          <VirtualTrialRoomPage
-            onBack={goBack}
-            initialDesign={p.initialDesign}
-          />
-        );
-      }
-
       case "design-detail": {
         const p = currentPage as {
           page: "design-detail";
@@ -148,7 +124,6 @@ export default function App() {
             design={p.design}
             designs={p.designs}
             initialIndex={p.initialIndex}
-            onTryInTrialRoom={handleTryInTrialRoom}
           />
         );
       }

@@ -9,14 +9,12 @@ interface GalleryPageProps {
   subcategory: string;
   bridalFilter?: "embroidery" | "blouse" | null;
   onSelectDesign: (design: Design) => void;
-  onAddToTrialRoom?: (design: Design) => void;
 }
 
 export function GalleryPage({
   subcategory,
   bridalFilter,
   onSelectDesign,
-  onAddToTrialRoom,
 }: GalleryPageProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const { data: designs, loading } = useDesigns();
@@ -90,7 +88,7 @@ export function GalleryPage({
           className="flex flex-col items-center justify-center py-16 px-8"
           data-ocid="gallery.empty_state"
         >
-          <span className="text-5xl mb-3">\ud83e\uddf5</span>
+          <span className="text-5xl mb-3">🧵</span>
           <p className="text-base font-semibold text-foreground">
             No designs found
           </p>
@@ -108,10 +106,6 @@ export function GalleryPage({
               design={design}
               imageMode="wide-contain"
               onClick={() => onSelectDesign(design)}
-              onViewDesign={() => onSelectDesign(design)}
-              onAddToTrialRoom={
-                onAddToTrialRoom ? () => onAddToTrialRoom(design) : undefined
-              }
             />
           ))}
         </div>

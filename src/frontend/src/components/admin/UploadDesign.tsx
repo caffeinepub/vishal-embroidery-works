@@ -1,10 +1,10 @@
-import { CheckCircle, Upload, X } from "lucide-react";
+import { CheckCircle, Sparkles, Upload, X } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { useDesigns } from "../../hooks/useFirestore";
 import { SUBCATEGORY_LABELS, generateDesignCode } from "../../lib/designCodes";
-import { classifyEmbroideryImage } from "../../lib/embroideryClassifier";
 import { addDesign } from "../../lib/firestoreService";
+import { generateBlousePreviews } from "../../lib/generateBlousePreview";
 import { uploadToCloudinary } from "../../lib/imageUtils";
 import { type Category, type Subcategory, generateId } from "../../lib/storage";
 
@@ -36,12 +36,11 @@ function getHelperText(sub: Subcategory): string {
   return "Recommended: Wide design image up to 1536 × 657 px";
 }
 
-type ImageRole = "design" | "front" | "back" | "sleeve";
-
 type UploadStatus =
   | { phase: "idle" }
   | { phase: "uploading"; done: number; total: number }
   | { phase: "saving" }
+  | { phase: "generating"; step: number; total: number }
   | { phase: "success" };
 
 export function UploadDesign({ onSaved }: { onSaved: () => void }) {
@@ -56,12 +55,25 @@ export function UploadDesign({ onSaved }: { onSaved: () => void }) {
   const [price, setPrice] = useState("");
   const [notes, setNotes] = useState("");
   const [status, setStatus] = useState<UploadStatus>({ phase: "idle" });
-  const [imageRoles, setImageRoles] = useState<Record<number, ImageRole>>({});
+
+  // Embroidery PNG files for AI preview (only for embroidery/embroidery)
+  const [frontEmbFile, setFrontEmbFile] = useState<File | null>(null);
+  const [backEmbFile, setBackEmbFile] = useState<File | null>(null);
+  const [sleeveEmbFile, setSleeveEmbFile] = useState<File | null>(null);
+  const [frontEmbPreview, setFrontEmbPreview] = useState<string>("");
+  const [backEmbPreview, setBackEmbPreview] = useState<string>("");
+  const [sleeveEmbPreview, setSleeveEmbPreview] = useState<string>("");
 
   const { data: designs } = useDesigns();
 
   const previewCode = generateDesignCode(subcategory, designs);
-  const isLoading = status.phase === "uploading" || status.phase === "saving";
+  const isLoading =
+    status.phase === "uploading" ||
+    status.phase === "saving" ||
+    status.phase === "generating";
+
+  const isEmbroideryAI =
+    category === "embroidery" && subcategory === "embroidery";
 
   const handleCategoryChange = (cat: Category) => {
     setCategory(cat);
@@ -89,19 +101,45 @@ export function UploadDesign({ onSaved }: { onSaved: () => void }) {
       return updated;
     });
     setPendingFiles((prev) => prev.filter((_, i) => i !== idx));
-    setImageRoles((prev) => {
-      const next: Record<number, ImageRole> = {};
-      for (const [key, val] of Object.entries(prev)) {
-        const k = Number(key);
-        if (k < idx) next[k] = val;
-        else if (k > idx) next[k - 1] = val;
-      }
-      return next;
-    });
   };
 
-  const setRole = (idx: number, role: ImageRole) => {
-    setImageRoles((prev) => ({ ...prev, [idx]: role }));
+  const handleEmbFileSelect = (
+    type: "front" | "back" | "sleeve",
+    e: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const previewUrl = URL.createObjectURL(file);
+    if (type === "front") {
+      if (frontEmbPreview) URL.revokeObjectURL(frontEmbPreview);
+      setFrontEmbFile(file);
+      setFrontEmbPreview(previewUrl);
+    } else if (type === "back") {
+      if (backEmbPreview) URL.revokeObjectURL(backEmbPreview);
+      setBackEmbFile(file);
+      setBackEmbPreview(previewUrl);
+    } else {
+      if (sleeveEmbPreview) URL.revokeObjectURL(sleeveEmbPreview);
+      setSleeveEmbFile(file);
+      setSleeveEmbPreview(previewUrl);
+    }
+    e.target.value = "";
+  };
+
+  const removeEmbFile = (type: "front" | "back" | "sleeve") => {
+    if (type === "front") {
+      if (frontEmbPreview) URL.revokeObjectURL(frontEmbPreview);
+      setFrontEmbFile(null);
+      setFrontEmbPreview("");
+    } else if (type === "back") {
+      if (backEmbPreview) URL.revokeObjectURL(backEmbPreview);
+      setBackEmbFile(null);
+      setBackEmbPreview("");
+    } else {
+      if (sleeveEmbPreview) URL.revokeObjectURL(sleeveEmbPreview);
+      setSleeveEmbFile(null);
+      setSleeveEmbPreview("");
+    }
   };
 
   const togglePresetTag = (tag: string) => {
@@ -147,6 +185,7 @@ export function UploadDesign({ onSaved }: { onSaved: () => void }) {
     setStatus({ phase: "uploading", done: 0, total });
 
     try {
+      // 1. Upload main images
       const imageUrls: string[] = [];
       for (let i = 0; i < pendingFiles.length; i++) {
         const url = await uploadToCloudinary(pendingFiles[i]);
@@ -154,21 +193,41 @@ export function UploadDesign({ onSaved }: { onSaved: () => void }) {
         setStatus({ phase: "uploading", done: i + 1, total });
       }
 
-      const classified: Record<string, string> = {};
-      for (let i = 0; i < pendingFiles.length; i++) {
-        const type = await classifyEmbroideryImage(pendingFiles[i]);
-        classified[type] = imageUrls[i];
-      }
+      // 2. Handle embroidery PNG uploads + AI generation (only for embroidery/embroidery)
+      let frontEmbroideryUrl: string | null = null;
+      let backEmbroideryUrl: string | null = null;
+      let sleeveEmbroideryUrl: string | null = null;
+      let generatedImages: {
+        frontImage: string;
+        backImage: string;
+        sideImage: string;
+      } | null = null;
 
-      let frontEmb: string | null = classified.frontEmbroidery || null;
-      let backEmb: string | null = classified.backEmbroidery || null;
-      let sleeveEmb: string | null = classified.sleeveEmbroidery || null;
+      const hasAllEmbFiles =
+        isEmbroideryAI && frontEmbFile && backEmbFile && sleeveEmbFile;
 
-      for (let i = 0; i < imageUrls.length; i++) {
-        const role = imageRoles[i];
-        if (role === "front") frontEmb = imageUrls[i];
-        else if (role === "back") backEmb = imageUrls[i];
-        else if (role === "sleeve") sleeveEmb = imageUrls[i];
+      if (hasAllEmbFiles) {
+        setStatus({ phase: "generating", step: 0, total: 3 });
+
+        // Upload the 3 embroidery PNGs to Cloudinary
+        const [fUrl, bUrl, sUrl] = await Promise.all([
+          uploadToCloudinary(frontEmbFile),
+          uploadToCloudinary(backEmbFile),
+          uploadToCloudinary(sleeveEmbFile),
+        ]);
+        frontEmbroideryUrl = fUrl;
+        backEmbroideryUrl = bUrl;
+        sleeveEmbroideryUrl = sUrl;
+
+        setStatus({ phase: "generating", step: 0, total: 3 });
+
+        // Generate composite blouse preview images
+        generatedImages = await generateBlousePreviews(
+          fUrl,
+          bUrl,
+          sUrl,
+          (step, total) => setStatus({ phase: "generating", step, total }),
+        );
       }
 
       setStatus({ phase: "saving" });
@@ -186,10 +245,10 @@ export function UploadDesign({ onSaved }: { onSaved: () => void }) {
         tags,
         price: price ? Number.parseFloat(price) : null,
         notes: notes.trim() || "",
-        frontEmbroidery: frontEmb,
-        backEmbroidery: backEmb,
-        sleeveEmbroidery: sleeveEmb,
-        blouseType: null,
+        frontEmbroidery: frontEmbroideryUrl,
+        backEmbroidery: backEmbroideryUrl,
+        sleeveEmbroidery: sleeveEmbroideryUrl,
+        generatedImages: generatedImages,
       });
 
       setStatus({ phase: "success" });
@@ -204,7 +263,12 @@ export function UploadDesign({ onSaved }: { onSaved: () => void }) {
         setTagInput("");
         setPrice("");
         setNotes("");
-        setImageRoles({});
+        setFrontEmbFile(null);
+        setBackEmbFile(null);
+        setSleeveEmbFile(null);
+        setFrontEmbPreview("");
+        setBackEmbPreview("");
+        setSleeveEmbPreview("");
         setStatus({ phase: "idle" });
       }, 2000);
     } catch {
@@ -212,13 +276,6 @@ export function UploadDesign({ onSaved }: { onSaved: () => void }) {
       setStatus({ phase: "idle" });
     }
   };
-
-  const ROLE_OPTIONS: { role: ImageRole; label: string }[] = [
-    { role: "design", label: "Design" },
-    { role: "front", label: "Front" },
-    { role: "back", label: "Back" },
-    { role: "sleeve", label: "Sleeve" },
-  ];
 
   return (
     <div className="p-4 space-y-4">
@@ -302,54 +359,28 @@ export function UploadDesign({ onSaved }: { onSaved: () => void }) {
         >
           Max {MAX_IMAGES} images. {getHelperText(subcategory)}
         </p>
-        <p className="text-[11px] text-primary/80 font-medium mb-2">
-          Tag each image role: Front / Back / Sleeve for correct Trial Room
-          mapping
-        </p>
 
         {previews.length > 0 && (
           <div className="flex gap-2 flex-wrap mb-2">
-            {previews.map((preview, idx) => {
-              const currentRole: ImageRole = imageRoles[idx] ?? "design";
-              return (
-                <div key={preview} className="flex flex-col items-center gap-1">
-                  <div className="relative w-16 h-16">
-                    <img
-                      src={preview}
-                      alt={`Preview ${idx + 1}`}
-                      className="w-full h-full object-contain rounded-lg bg-muted"
-                    />
-                    {!isLoading && (
-                      <button
-                        type="button"
-                        onClick={() => removeImage(idx)}
-                        data-ocid={`upload.remove_image.button.${idx + 1}`}
-                        className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-destructive text-white rounded-full flex items-center justify-center text-xs"
-                      >
-                        <X size={10} />
-                      </button>
-                    )}
-                  </div>
-                  <div className="flex gap-0.5">
-                    {ROLE_OPTIONS.map(({ role, label }) => (
-                      <button
-                        key={role}
-                        type="button"
-                        disabled={isLoading}
-                        onClick={() => setRole(idx, role)}
-                        className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold transition-colors ${
-                          currentRole === role
-                            ? "bg-primary text-primary-foreground"
-                            : "bg-muted text-muted-foreground"
-                        }`}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
+            {previews.map((preview, idx) => (
+              <div key={preview} className="relative w-16 h-16">
+                <img
+                  src={preview}
+                  alt={`Preview ${idx + 1}`}
+                  className="w-full h-full object-contain rounded-lg bg-muted"
+                />
+                {!isLoading && (
+                  <button
+                    type="button"
+                    onClick={() => removeImage(idx)}
+                    data-ocid={`upload.remove_image.button.${idx + 1}`}
+                    className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-destructive text-white rounded-full flex items-center justify-center text-xs"
+                  >
+                    <X size={10} />
+                  </button>
+                )}
+              </div>
+            ))}
           </div>
         )}
 
@@ -372,6 +403,72 @@ export function UploadDesign({ onSaved }: { onSaved: () => void }) {
           </label>
         )}
       </div>
+
+      {/* AI Embroidery PNG Section — only for embroidery/embroidery */}
+      {isEmbroideryAI && (
+        <div className="bg-gradient-to-br from-primary/5 to-primary/10 border border-primary/20 rounded-xl p-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <Sparkles size={16} className="text-primary" />
+            <p className="text-xs font-bold text-primary tracking-wide">
+              EMBROIDERY PNG FILES (AI Preview Generation)
+            </p>
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            Upload transparent PNG files. System will automatically generate
+            blouse preview images showing the embroidery stitched on the blouse.
+          </p>
+
+          {/* Front Embroidery */}
+          <EmbSlot
+            label="Front Neckline Embroidery"
+            hint="frontEmbroidery.png"
+            preview={frontEmbPreview}
+            file={frontEmbFile}
+            isLoading={isLoading}
+            ocid="upload.front_emb.upload_button"
+            onSelect={(e) => handleEmbFileSelect("front", e)}
+            onRemove={() => removeEmbFile("front")}
+          />
+
+          {/* Back Embroidery */}
+          <EmbSlot
+            label="Back Neckline Embroidery"
+            hint="backEmbroidery.png"
+            preview={backEmbPreview}
+            file={backEmbFile}
+            isLoading={isLoading}
+            ocid="upload.back_emb.upload_button"
+            onSelect={(e) => handleEmbFileSelect("back", e)}
+            onRemove={() => removeEmbFile("back")}
+          />
+
+          {/* Sleeve Embroidery */}
+          <EmbSlot
+            label="Sleeve Border Embroidery"
+            hint="sleeveEmbroidery.png"
+            preview={sleeveEmbPreview}
+            file={sleeveEmbFile}
+            isLoading={isLoading}
+            ocid="upload.sleeve_emb.upload_button"
+            onSelect={(e) => handleEmbFileSelect("sleeve", e)}
+            onRemove={() => removeEmbFile("sleeve")}
+          />
+
+          {frontEmbFile && backEmbFile && sleeveEmbFile ? (
+            <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
+              <CheckCircle size={14} className="text-green-600 shrink-0" />
+              <p className="text-[11px] text-green-700 font-semibold">
+                All 3 PNG files ready — AI blouse preview will be generated on
+                save
+              </p>
+            </div>
+          ) : (
+            <p className="text-[10px] text-muted-foreground text-center">
+              Upload all 3 files to enable AI generation (optional)
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Price */}
       <div>
@@ -519,6 +616,36 @@ export function UploadDesign({ onSaved }: { onSaved: () => void }) {
         </div>
       )}
 
+      {status.phase === "generating" && (
+        <div data-ocid="upload.generating.loading_state" className="space-y-2">
+          <div className="flex justify-between items-center text-sm font-semibold">
+            <span className="text-primary flex items-center gap-1.5">
+              <Sparkles size={14} className="animate-pulse" />
+              Generating AI blouse preview...
+            </span>
+            <span className="text-primary font-bold">
+              {status.step} / {status.total}
+            </span>
+          </div>
+          <div className="w-full bg-muted rounded-full h-2.5 overflow-hidden">
+            <div
+              className="bg-primary h-2.5 rounded-full transition-all duration-300"
+              style={{ width: `${(status.step / status.total) * 100}%` }}
+            />
+          </div>
+          <p className="text-[11px] text-muted-foreground text-center">
+            {
+              [
+                "Starting generation...",
+                "Front view done...",
+                "Back view done...",
+                "All views complete!",
+              ][status.step]
+            }
+          </p>
+        </div>
+      )}
+
       {status.phase === "saving" && (
         <div
           data-ocid="upload.saving.loading_state"
@@ -554,12 +681,85 @@ export function UploadDesign({ onSaved }: { onSaved: () => void }) {
       >
         {status.phase === "uploading"
           ? `Uploading... ${status.done}/${status.total}`
-          : status.phase === "saving"
-            ? "Saving..."
-            : status.phase === "success"
-              ? "Upload Successful"
-              : "Save Design"}
+          : status.phase === "generating"
+            ? `Generating AI preview... ${status.step}/${status.total}`
+            : status.phase === "saving"
+              ? "Saving..."
+              : status.phase === "success"
+                ? "Upload Successful"
+                : "Save Design"}
       </button>
+    </div>
+  );
+}
+
+// Helper sub-component for embroidery PNG upload slot
+function EmbSlot({
+  label,
+  hint,
+  preview,
+  file,
+  isLoading,
+  ocid,
+  onSelect,
+  onRemove,
+}: {
+  label: string;
+  hint: string;
+  preview: string;
+  file: File | null;
+  isLoading: boolean;
+  ocid: string;
+  onSelect: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onRemove: () => void;
+}) {
+  return (
+    <div className="flex items-center gap-3">
+      {/* Thumbnail */}
+      <div className="relative w-14 h-14 shrink-0">
+        {preview ? (
+          <>
+            <img
+              src={preview}
+              alt={label}
+              className="w-full h-full object-contain rounded-lg bg-white border border-border"
+            />
+            {!isLoading && (
+              <button
+                type="button"
+                onClick={onRemove}
+                className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-destructive text-white rounded-full flex items-center justify-center"
+              >
+                <X size={10} />
+              </button>
+            )}
+          </>
+        ) : (
+          <label
+            data-ocid={ocid}
+            className="w-full h-full border-2 border-dashed border-border rounded-lg cursor-pointer hover:border-primary/50 hover:bg-white/50 transition-colors flex items-center justify-center"
+          >
+            <Upload size={16} className="text-muted-foreground" />
+            <input
+              type="file"
+              accept="image/png"
+              className="hidden"
+              disabled={isLoading}
+              onChange={onSelect}
+            />
+          </label>
+        )}
+      </div>
+      {/* Label */}
+      <div className="flex-1 min-w-0">
+        <p className="text-xs font-semibold text-foreground">{label}</p>
+        <p className="text-[10px] text-muted-foreground">{hint}</p>
+        {file && (
+          <p className="text-[10px] text-green-600 font-semibold mt-0.5">
+            ✓ {file.name}
+          </p>
+        )}
+      </div>
     </div>
   );
 }

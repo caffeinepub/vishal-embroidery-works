@@ -34,7 +34,13 @@ function sanitizeDesign(design: Design): Record<string, unknown> {
       typeof design.sleeveEmbroidery === "string"
         ? design.sleeveEmbroidery
         : null,
-    blouseType: design.blouseType ?? null,
+    generatedImages: design.generatedImages
+      ? {
+          frontImage: design.generatedImages.frontImage || null,
+          backImage: design.generatedImages.backImage || null,
+          sideImage: design.generatedImages.sideImage || null,
+        }
+      : null,
   };
 }
 
@@ -84,30 +90,57 @@ export async function addPayment(payment: Payment): Promise<void> {
   await setDoc(doc(db, "payments", payment.id), payment);
 }
 
-// --- Design code cascade ---
+export async function updatePayment(payment: Payment): Promise<void> {
+  await setDoc(doc(db, "payments", payment.id), payment, { merge: true });
+}
+
+export async function deletePayment(id: string): Promise<void> {
+  await deleteDoc(doc(db, "payments", id));
+}
+
+// --- Bulk fetch helpers ---
+export async function getAllDesigns(): Promise<Design[]> {
+  const q = query(collection(db, "designs"));
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => d.data() as Design);
+}
+
+export async function getAllCustomers(): Promise<Customer[]> {
+  const q = query(collection(db, "customers"));
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => d.data() as Customer);
+}
+
+export async function getAllOrders(): Promise<Order[]> {
+  const q = query(collection(db, "orders"));
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => d.data() as Order);
+}
+
+export async function getAllPayments(): Promise<Payment[]> {
+  const q = query(collection(db, "payments"));
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => d.data() as Payment);
+}
+
+/** Update all orders that reference the old design code to use the new design code. */
 export async function updateOrderDesignCode(
   oldCode: string,
   newCode: string,
 ): Promise<void> {
-  if (oldCode === newCode) return;
-  const q = query(collection(db, "orders"));
-  const snapshot = await getDocs(q);
-  const updates: Promise<void>[] = [];
-  for (const docSnap of snapshot.docs) {
-    const order = docSnap.data() as Order;
-    const hasMatch = order.designs?.some((d) => d.designCode === oldCode);
-    if (hasMatch) {
-      const updatedDesigns = order.designs.map((d) =>
-        d.designCode === oldCode ? { ...d, designCode: newCode } : d,
-      );
-      updates.push(
-        setDoc(
-          doc(db, "orders", order.id),
-          { ...order, designs: updatedDesigns },
-          { merge: true },
+  const orders = await getAllOrders();
+  const affected = orders.filter((o) =>
+    o.designs.some((d) => d.designCode === oldCode),
+  );
+  await Promise.all(
+    affected.map((order) => {
+      const updated = {
+        ...order,
+        designs: order.designs.map((d) =>
+          d.designCode === oldCode ? { ...d, designCode: newCode } : d,
         ),
-      );
-    }
-  }
-  await Promise.all(updates);
+      };
+      return updateOrder(updated);
+    }),
+  );
 }

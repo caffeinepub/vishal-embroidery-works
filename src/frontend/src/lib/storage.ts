@@ -42,6 +42,12 @@ export const ALL_BLOUSE_TYPES: NonNullable<BlouseType>[] = [
   "padded-blouse",
 ];
 
+export interface GeneratedBlouseImages {
+  frontImage?: string | null;
+  backImage?: string | null;
+  sideImage?: string | null;
+}
+
 export interface Design {
   id: string;
   designCode: string;
@@ -55,10 +61,11 @@ export interface Design {
   tags: string[];
   price?: number | null;
   notes?: string;
+  // AI blouse preview fields (only for category=embroidery, subcategory=embroidery)
   frontEmbroidery?: string | null;
   backEmbroidery?: string | null;
   sleeveEmbroidery?: string | null;
-  blouseType?: BlouseType; // kept for backward compat; new designs derive from subcategory
+  generatedImages?: GeneratedBlouseImages | null;
 }
 
 export interface Measurements {
@@ -128,14 +135,6 @@ export interface CartItem {
   uploadedBlousePhoto?: string;
 }
 
-export interface TrialRoomItem {
-  id: string;
-  designCode: string;
-  imageURL: string;
-  category: string;
-  addedAt: string;
-}
-
 const CART_KEY = "VEW_STITCHING_CART";
 
 function safeGet<T>(key: string): T[] {
@@ -164,17 +163,6 @@ export function saveCart(cart: CartItem[]): void {
 
 export function clearCart(): void {
   safeSet(CART_KEY, []);
-}
-
-const TRIAL_ROOM_KEY = "VEW_TRIAL_ROOM";
-export const TRIAL_ROOM_LIMIT = 10;
-
-export function getTrialRoom(): TrialRoomItem[] {
-  return safeGet<TrialRoomItem>(TRIAL_ROOM_KEY);
-}
-
-export function saveTrialRoom(items: TrialRoomItem[]): void {
-  safeSet(TRIAL_ROOM_KEY, items);
 }
 
 export function generateId(): string {

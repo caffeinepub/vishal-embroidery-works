@@ -1,48 +1,30 @@
 import { Search } from "lucide-react";
-import { useRef, useState } from "react";
+import { useState } from "react";
+import { toast } from "sonner";
 import { DesignCard } from "../components/DesignCard";
 import { useDesigns } from "../hooks/useFirestore";
 import type { Design, Subcategory } from "../lib/storage";
+import { useAppStore } from "../store/appStore";
 
 interface EmbroideryPageProps {
   onSelectDesign: (design: Design, designs: Design[], index: number) => void;
 }
 
-const subcategories: {
-  id: Subcategory;
-  label: string;
-  emoji: string;
-  desc: string;
-}[] = [
-  {
-    id: "embroidery",
-    label: "Embroidery",
-    emoji: "🧵",
-    desc: "Traditional & modern embroidery designs",
-  },
-  {
-    id: "ready-blouse-embroidery",
-    label: "Ready Blouse Embroidery",
-    emoji: "✨",
-    desc: "Pre-made embroidery for blouses",
-  },
+const subcategories: { id: Subcategory; label: string }[] = [
+  { id: "embroidery", label: "Embroidery" },
+  { id: "ready-blouse-embroidery", label: "Ready Blouse Embroidery" },
 ];
 
 export function EmbroideryPage({ onSelectDesign }: EmbroideryPageProps) {
-  const [activeSubcategory, setActiveSubcategory] =
-    useState<Subcategory | null>(null);
+  const [activeSubcategory, setActiveSubcategory] = useState<Subcategory>(
+    subcategories[0].id,
+  );
   const [searchQuery, setSearchQuery] = useState("");
-
-  const searchRef = useRef<HTMLDivElement>(null);
   const { data: allDesigns, loading } = useDesigns();
+  const { addToCart } = useAppStore();
 
-  const handleCardTap = (subId: Subcategory) => {
-    setActiveSubcategory((prev) => (prev === subId ? null : subId));
-    setSearchQuery("");
-  };
-
-  // Search across all embroidery designs
   const isSearching = searchQuery.trim().length > 0;
+
   const searchResults = isSearching
     ? allDesigns
         .filter(
@@ -60,12 +42,32 @@ export function EmbroideryPage({ onSelectDesign }: EmbroideryPageProps) {
         })
     : [];
 
-  const galleryDesigns =
-    !isSearching && activeSubcategory
-      ? allDesigns.filter(
-          (d) => d.subcategory === activeSubcategory && !d.isHidden,
-        )
-      : [];
+  const galleryDesigns = !isSearching
+    ? allDesigns.filter(
+        (d) => d.subcategory === activeSubcategory && !d.isHidden,
+      )
+    : [];
+
+  const handleAddToStitching = (design: Design) => {
+    addToCart({
+      designId: design.id,
+      designCode: design.designCode,
+      designTitle: design.title,
+      designImage: design.generatedImages?.frontImage || design.images[0] || "",
+    });
+    toast.success(`${design.designCode} added to stitching orders`);
+  };
+
+  const handleShare = (design: Design) => {
+    const text = `${design.designCode} — ${design.title}`;
+    if (navigator.share) {
+      navigator.share({ title: design.title, text }).catch(() => {});
+    } else {
+      navigator.clipboard.writeText(text).then(() => {
+        toast.success("Design code copied to clipboard");
+      });
+    }
+  };
 
   return (
     <div className="min-h-full">
@@ -78,7 +80,7 @@ export function EmbroideryPage({ onSelectDesign }: EmbroideryPageProps) {
       </div>
 
       {/* Search Bar */}
-      <div className="px-4 pb-3" ref={searchRef}>
+      <div className="px-4 pb-3">
         <div className="relative">
           <Search
             size={15}
@@ -103,6 +105,27 @@ export function EmbroideryPage({ onSelectDesign }: EmbroideryPageProps) {
           )}
         </div>
       </div>
+
+      {/* Horizontal Category Pill Slider */}
+      {!isSearching && (
+        <div className="flex gap-2 overflow-x-auto px-4 pb-3 scrollbar-hide">
+          {subcategories.map((sub) => (
+            <button
+              key={sub.id}
+              type="button"
+              data-ocid={`embroidery.${sub.id}.tab`}
+              onClick={() => setActiveSubcategory(sub.id)}
+              className={`shrink-0 px-4 py-2 rounded-full text-sm font-semibold transition-colors whitespace-nowrap ${
+                activeSubcategory === sub.id
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-muted text-muted-foreground hover:bg-muted/80"
+              }`}
+            >
+              {sub.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Search Results */}
       {isSearching ? (
@@ -132,129 +155,61 @@ export function EmbroideryPage({ onSelectDesign }: EmbroideryPageProps) {
                   key={design.id}
                   design={design}
                   imageMode="wide-contain"
+                  showActions
                   onClick={() => onSelectDesign(design, searchResults, idx)}
+                  onAddToStitching={() => handleAddToStitching(design)}
+                  onShare={() => handleShare(design)}
                 />
               ))}
             </div>
           )}
         </div>
       ) : (
-        <>
-          {/* Subcategory Grid */}
-          <div className="px-4 grid grid-cols-2 gap-3">
-            {subcategories.map((sub) => {
-              const count = allDesigns.filter(
-                (d) => d.subcategory === sub.id && !d.isHidden,
-              ).length;
-              const isActive = activeSubcategory === sub.id;
-
-              return (
-                <button
-                  type="button"
-                  key={sub.id}
-                  data-ocid={`embroidery.${sub.id}.card`}
-                  onClick={() => handleCardTap(sub.id)}
-                  className={`rounded-2xl shadow-card p-4 text-left active:scale-[0.97] transition-all hover:shadow-card-hover ${
-                    isActive
-                      ? "bg-primary text-primary-foreground ring-2 ring-primary/30"
-                      : "bg-card"
-                  }`}
-                >
-                  <div
-                    className={`w-12 h-12 rounded-xl flex items-center justify-center mb-3 ${
-                      isActive ? "bg-white/20" : "bg-primary/10"
-                    }`}
-                  >
-                    <span className="text-2xl">{sub.emoji}</span>
-                  </div>
-                  <h3
-                    className={`font-bold text-sm leading-tight ${
-                      isActive ? "text-primary-foreground" : "text-foreground"
-                    }`}
-                  >
-                    {sub.label}
-                  </h3>
-                  <p
-                    className={`text-xs mt-1 line-clamp-2 ${
-                      isActive
-                        ? "text-primary-foreground/70"
-                        : "text-muted-foreground"
-                    }`}
-                  >
-                    {sub.desc}
-                  </p>
-                  <div className="mt-2 flex items-center gap-1">
-                    <span
-                      className={`text-xs font-bold ${
-                        isActive ? "text-primary-foreground" : "text-primary"
-                      }`}
-                    >
-                      {count}
-                    </span>
-                    <span
-                      className={`text-xs ${
-                        isActive
-                          ? "text-primary-foreground/70"
-                          : "text-muted-foreground"
-                      }`}
-                    >
-                      designs
-                    </span>
-                  </div>
-                </button>
-              );
-            })}
+        <div className="px-4">
+          {/* Design count */}
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-sm font-semibold text-foreground">
+              {subcategories.find((s) => s.id === activeSubcategory)?.label}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {galleryDesigns.length} designs
+            </p>
           </div>
 
-          {/* Inline Gallery */}
-          {activeSubcategory && (
-            <div className="mt-4 px-4">
-              <div className="flex items-center justify-between mb-3">
-                <p className="text-sm font-semibold text-foreground">
-                  {subcategories.find((s) => s.id === activeSubcategory)?.label}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {galleryDesigns.length} designs
-                </p>
-              </div>
-
-              {loading ? (
-                <div className="grid grid-cols-2 gap-2">
-                  {[1, 2, 3, 4].map((i) => (
-                    <div
-                      key={i}
-                      className="rounded-xl bg-muted animate-pulse"
-                      style={{ paddingBottom: "100%" }}
-                    />
-                  ))}
-                </div>
-              ) : galleryDesigns.length === 0 ? (
+          {loading ? (
+            <div className="grid grid-cols-2 gap-2">
+              {[1, 2, 3, 4].map((i) => (
                 <div
-                  data-ocid="embroidery.gallery.empty_state"
-                  className="text-center py-12 bg-muted/30 rounded-xl"
-                >
-                  <span className="text-4xl mb-2 block">🧵</span>
-                  <p className="text-sm text-muted-foreground">
-                    No designs yet
-                  </p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 gap-2 pb-4">
-                  {galleryDesigns.map((design, idx) => (
-                    <DesignCard
-                      key={design.id}
-                      design={design}
-                      imageMode="wide-contain"
-                      onClick={() =>
-                        onSelectDesign(design, galleryDesigns, idx)
-                      }
-                    />
-                  ))}
-                </div>
-              )}
+                  key={i}
+                  className="rounded-xl bg-muted animate-pulse"
+                  style={{ paddingBottom: "60%" }}
+                />
+              ))}
+            </div>
+          ) : galleryDesigns.length === 0 ? (
+            <div
+              data-ocid="embroidery.gallery.empty_state"
+              className="text-center py-12 bg-muted/30 rounded-xl"
+            >
+              <span className="text-4xl mb-2 block">🧵</span>
+              <p className="text-sm text-muted-foreground">No designs yet</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-2 pb-4">
+              {galleryDesigns.map((design, idx) => (
+                <DesignCard
+                  key={design.id}
+                  design={design}
+                  imageMode="wide-contain"
+                  showActions
+                  onClick={() => onSelectDesign(design, galleryDesigns, idx)}
+                  onAddToStitching={() => handleAddToStitching(design)}
+                  onShare={() => handleShare(design)}
+                />
+              ))}
             </div>
           )}
-        </>
+        </div>
       )}
     </div>
   );
